@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.10.2
+// @version      1.10.3
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -96,6 +96,10 @@
     var key = D.S.activeQueryKey || D.queryKey(D.CFG);
     return (D.S.queries || []).filter(function (query) { return D.queryKey(query) === key; })[0] || Object.assign({ name: 'Azure DevOps Query' }, D.CFG);
   };
+  D.isTestPlanSource = function () { return D.CFG.sourceType === 'testPlan'; };
+  D.groupSingular = function () { return D.isTestPlanSource() ? 'Config' : 'Rack'; };
+  D.groupPlural = function () { return D.isTestPlanSource() ? 'Configs' : 'Racks'; };
+  D.primaryGroupName = function () { return (D.S.racks[0] && D.S.racks[0].label) || D.groupSingular(); };
   D.parseQueryUrl = function (value, name) {
     var parsed;
     try { parsed = new URL(String(value || '').trim()); } catch (error) { throw new Error('Enter a valid Azure DevOps Query URL.'); }
@@ -249,24 +253,48 @@
     var base = D.baseFor();
     var rels = [], ids = [], seen = {}, suiteGroups = null;
     if (D.CFG.sourceType === 'testPlan') {
-      var suiteUrl = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/Plans/' + encodeURIComponent(D.CFG.planId)
-        + '/Suites/' + encodeURIComponent(D.CFG.suiteId) + '/TestCase?isRecursive=true&expand=false&api-version=7.1';
-      var suiteResponse = await D.apiFetch(suiteUrl);
-      var suiteCases = Array.isArray(suiteResponse) ? suiteResponse : (suiteResponse.value || []);
+      var planPath = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/Plans/' + encodeURIComponent(D.CFG.planId);
+      var suiteTreeResponse = await D.apiFetch(planPath + '/suites?asTreeView=true&api-version=7.1');
+      var allSuites = [];
+      function collectSuites(suite) {
+        if (!suite) return;
+        allSuites.push(suite);
+        (suite.children || []).forEach(collectSuites);
+      }
+      (suiteTreeResponse.value || []).forEach(collectSuites);
+      var configSuites = allSuites.filter(function (suite) { return /\b(LM|MM|HH)\b/i.test(suite.name || ''); });
+      var configRank = { LM: 1, MM: 2, HH: 3 };
+      configSuites.sort(function (a, b) {
+        var am = /\b(LM|MM|HH)\b/i.exec(a.name || ''), bm = /\b(LM|MM|HH)\b/i.exec(b.name || '');
+        return (configRank[am ? am[1].toUpperCase() : ''] || 99) - (configRank[bm ? bm[1].toUpperCase() : ''] || 99);
+      });
       suiteGroups = {};
-      suiteCases.forEach(function (entry) {
+      function addSuiteCase(entry, suite) {
         var testCase = entry.testCase || entry.workItem || entry;
         var id = +(testCase && testCase.id);
         if (!id) return;
         if (!seen[id]) { seen[id] = 1; ids.push(id); }
-        var suite = entry.testSuite || entry.suite || {};
-        var suiteKey = String(suite.id || D.CFG.suiteId);
+        var groupSuite = suite || entry.testSuite || entry.suite || {};
+        var suiteKey = String(groupSuite.id || D.CFG.suiteId);
         var group = suiteGroups[suiteKey] || (suiteGroups[suiteKey] = {
-          id: suite.id || D.CFG.suiteId, name: suite.name || ('Test Suite ' + (suite.id || D.CFG.suiteId)), ids: [], seen: {}
+          id: groupSuite.id || D.CFG.suiteId, name: groupSuite.name || ('Test Suite ' + (groupSuite.id || D.CFG.suiteId)), ids: [], seen: {}
         });
         if (!group.seen[id]) { group.seen[id] = 1; group.ids.push(id); }
-      });
-      if (!ids.length) throw new Error('The selected Test Plan suite contains no readable Test Cases.');
+      }
+      if (configSuites.length) {
+        var configResponses = await Promise.all(configSuites.map(function (suite) {
+          return D.apiFetch(planPath + '/Suites/' + encodeURIComponent(suite.id) + '/TestCase?isRecursive=true&expand=false&api-version=7.1');
+        }));
+        configResponses.forEach(function (response, index) {
+          var entries = Array.isArray(response) ? response : (response.value || []);
+          entries.forEach(function (entry) { addSuiteCase(entry, configSuites[index]); });
+        });
+      } else {
+        var suiteResponse = await D.apiFetch(planPath + '/Suites/' + encodeURIComponent(D.CFG.suiteId) + '/TestCase?isRecursive=true&expand=false&api-version=7.1');
+        var suiteCases = Array.isArray(suiteResponse) ? suiteResponse : (suiteResponse.value || []);
+        suiteCases.forEach(function (entry) { addSuiteCase(entry, null); });
+      }
+      if (!ids.length) throw new Error('The selected LM / MM / HH Config suites contain no readable Test Cases.');
     } else {
       var wiql = await D.apiFetch(base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/wit/wiql/' + D.CFG.queryId + '?api-version=6.0&$top=5000');
       rels = wiql.workItemRelations || [];
@@ -363,13 +391,18 @@
     }
     var racks;
     if (suiteGroups) {
-      racks = Object.keys(suiteGroups).map(function (key, index) {
-        var group = suiteGroups[key];
+      var configOrder = { LM: 1, MM: 2, HH: 3 };
+      racks = Object.keys(suiteGroups).map(function (key) {
+        var group = suiteGroups[key], match = /\b(LM|MM|HH)\b/i.exec(group.name || '');
+        var code = match ? match[1].toUpperCase() : '', label = code ? (code + ' Config') : group.name;
         return {
-          id: 'suite-' + group.id, type: 'Feature', title: group.name, state: '?', tags: '', changed: null, assigned: '',
-          metrics: {}, suiteFields: {}, bugs: [], children: group.ids.map(build), num: index + 1, label: group.name
+          id: 'suite-' + group.id, suiteId: group.id, type: 'Feature', title: group.name, state: '?', tags: '', changed: null, assigned: '',
+          metrics: {}, suiteFields: {}, bugs: [], children: group.ids.map(build),
+          num: configOrder[code] || 99, label: label,
+          url: D.CFG.org + '/' + encodeURIComponent(D.CFG.project) + '/_testPlans/charts?planId=' + encodeURIComponent(D.CFG.planId) + '&suiteId=' + encodeURIComponent(group.id)
         };
       });
+      racks.sort(function (a, b) { return a.num - b.num || a.label.localeCompare(b.label); });
     } else {
       var rackIds = ids.filter(function (id) {
         var f = byId[id]; if (!f || f['System.WorkItemType'] !== 'Feature') return false;
@@ -876,7 +909,7 @@
   };
   D.reportStamp = function () { var now = new Date(); return now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0'); };
   D.exportWeeklyCsv = function () {
-    var headers = ['Rack', 'Case ID', 'Title', 'Case State', 'Changed Date', 'Changed This Week', 'Snapshot Change', 'Latest Test Result', 'Result Date', 'Test Run ID', 'Priority', 'Sample Size', 'Number of Cycles', 'Test Duration', 'Linked Bugs', 'Azure DevOps URL'];
+    var headers = [D.groupSingular(), 'Case ID', 'Title', 'Case State', 'Changed Date', 'Changed This Week', 'Snapshot Change', 'Latest Test Result', 'Result Date', 'Test Run ID', 'Priority', 'Sample Size', 'Number of Cycles', 'Test Duration', 'Linked Bugs', 'Azure DevOps URL'];
     var keys = ['rack', 'id', 'title', 'state', 'changed', 'changedThisWeek', 'snapshotChange', 'result', 'resultDate', 'runId', 'priority', 'sampleSize', 'cycles', 'duration', 'bugs', 'url'];
     var lines = [headers.map(D.csvValue).join(',')]; D.weeklyRows().forEach(function (row) { lines.push(keys.map(function (key) { return D.csvValue(row[key]); }).join(',')); });
     D.downloadBlob('\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8', D.reportPrefix() + '-Weekly-Report-' + D.reportStamp() + '.csv'); D.setStatus('Downloaded weekly CSV report with ' + (lines.length - 1) + ' case rows.', 'info');
@@ -928,7 +961,7 @@
     return D.zipStore(files);
   };
   D.weeklyXlsx = function () {
-    var caseHeaders = ['Rack', 'Case ID', 'Title', 'Case State', 'Changed Date', 'Changed This Week', 'Snapshot Change', 'Latest Test Result', 'Result Date', 'Test Run ID', 'Priority', 'Sample Size', 'Number of Cycles', 'Test Duration', 'Linked Bugs', 'Azure DevOps URL'];
+    var caseHeaders = [D.groupSingular(), 'Case ID', 'Title', 'Case State', 'Changed Date', 'Changed This Week', 'Snapshot Change', 'Latest Test Result', 'Result Date', 'Test Run ID', 'Priority', 'Sample Size', 'Number of Cycles', 'Test Duration', 'Linked Bugs', 'Azure DevOps URL'];
     var caseRows = D.weeklyRows().map(function (row) { return [row.rack, { value: row.id, href: row.url }, row.title, row.state, row.changed, row.changedThisWeek, row.snapshotChange, row.result, row.resultDate, row.runId, row.priority, row.sampleSize, row.cycles, row.duration, row.bugs, { value: row.url, href: row.url }]; });
     var runHeaders = ['Run ID', 'Name', 'Test Plan ID', 'Test Plan', 'State', 'Started', 'Completed', 'Result Count', 'Status', 'URL'];
     var runRows = (D.S.testResults.runs || []).map(function (run) { return [{ value: run.id, href: run.url }, run.name, run.planId || '-', run.planName || '-', run.state, D.fmt(run.startedDate), D.fmt(run.completedDate), run.resultCount, run.error || 'Loaded', { value: run.url, href: run.url }]; });
@@ -937,7 +970,7 @@
     return { bytes: D.xlsxWorkbook([
       { name: 'Weekly Cases', headers: caseHeaders, rows: caseRows, widths: [70, 72, 360, 90, 110, 95, 130, 110, 110, 80, 70, 85, 100, 95, 220, 300] },
       { name: 'Test Runs', headers: runHeaders, rows: runRows, widths: [72, 220, 80, 180, 80, 110, 110, 90, 120, 300] },
-      { name: 'Snapshot Changes', headers: ['Change', 'Case ID', 'Title', 'Rack', 'Before', 'After', 'Changed'], rows: changeRows, widths: [100, 72, 360, 90, 90, 90, 110] }
+      { name: 'Snapshot Changes', headers: ['Change', 'Case ID', 'Title', D.groupSingular(), 'Before', 'After', 'Changed'], rows: changeRows, widths: [100, 72, 360, 90, 90, 90, 110] }
     ]), count: caseRows.length };
   };
   D.exportWeeklyExcel = function () { var report = D.weeklyXlsx(); D.downloadBlob(report.bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', D.reportPrefix() + '-Weekly-Report-' + D.reportStamp() + '.xlsx'); D.setStatus('Downloaded XLSX workbook with ' + report.count + ' case rows and three unfrozen worksheets.', 'info'); };
@@ -952,7 +985,7 @@
       D.card('UPDATED THIS WEEK', (comparison.updatedThisWeek || []).length, '#c084fc')].forEach(function (card) { cards.appendChild(card); });
     sticky.appendChild(cards); wrap.appendChild(sticky);
     var toolbar = D.el('div', 'insights-toolbar'), csv = D.el('button', 'primary', 'Download weekly CSV'), excel = D.el('button', 'primary', 'Download weekly Excel (.xlsx)');
-    csv.addEventListener('click', D.exportWeeklyCsv); excel.addEventListener('click', D.exportWeeklyExcel); toolbar.appendChild(csv); toolbar.appendChild(excel); toolbar.appendChild(D.el('span', 'small', 'Reports include all Racks, latest Test Result, weekly changes, metrics, Bugs and hyperlinks.')); wrap.appendChild(toolbar);
+    csv.addEventListener('click', D.exportWeeklyCsv); excel.addEventListener('click', D.exportWeeklyExcel); toolbar.appendChild(csv); toolbar.appendChild(excel); toolbar.appendChild(D.el('span', 'small', 'Reports include all ' + D.groupPlural() + ', latest Test Result, weekly changes, metrics, Bugs and hyperlinks.')); wrap.appendChild(toolbar);
     var resultGrid = D.el('div', 'grid'), resultBox = D.box('Real Pass / Fail — latest Test Result per Case');
     resultBox.appendChild(D.el('div', 'metric-total', resultAvailable ? ('Denominator: ' + summary.denominator + ' latest decisive results · ' + summary.other + ' other outcomes · ' + summary.noResult + ' cases without a result') : ('Unavailable: ' + (test.error || 'not loaded'))));
     resultBox.appendChild(D.horizontalBarChart('Latest Test Results', [
@@ -1120,24 +1153,24 @@
     }
   };
   D.featureInventory = function () {
-    var rack = D.S.racks[0], groups = [], byKey = {};
-    if (!rack) return groups;
-    function groupFor(feature) {
-      var key = feature ? String(feature.id) : 'unmapped';
+    var groups = [], byKey = {};
+    var sources = D.isTestPlanSource() ? (D.S.racks || []) : (D.S.racks[0] ? [D.S.racks[0]] : []);
+    function groupFor(feature, source) {
+      var key = String(source.id) + ':' + (feature ? String(feature.id) : 'unmapped');
       if (!byKey[key]) {
-        var name = feature ? feature.title.replace(/^(\[[^\]]*\]\s*)+/, '').trim() : 'Unmapped';
-        byKey[key] = { id: key, name: name || ('Feature #' + feature.id), feature: feature, cases: [] };
+        var name = D.isTestPlanSource() ? source.label : (feature ? feature.title.replace(/^(\[[^\]]*\]\s*)+/, '').trim() : 'Unmapped');
+        byKey[key] = { id: key, name: name || ('Feature #' + (feature && feature.id)), feature: feature, cases: [] };
         groups.push(byKey[key]);
       }
       return byKey[key];
     }
-    function visit(node, currentFeature) {
+    function visit(node, currentFeature, source) {
       var feature = currentFeature;
-      if (node !== rack && node.type === 'Feature') feature = node;
-      if (node.type === 'Test Case') groupFor(feature).cases.push({ testCase: node, rack: rack, feature: feature });
-      (node.children || []).forEach(function (child) { visit(child, feature); });
+      if (node !== source && node.type === 'Feature') feature = node;
+      if (node.type === 'Test Case') groupFor(feature, source).cases.push({ testCase: node, rack: source, feature: feature });
+      (node.children || []).forEach(function (child) { visit(child, feature, source); });
     }
-    visit(rack, null);
+    sources.forEach(function (source) { visit(source, null, source); });
     return groups;
   };
   D.xmlEsc = function (value) {
@@ -1163,17 +1196,17 @@
   };
   D.suiteXlsx = function () {
     var rows = D.suiteExportRows();
-    var headers = ['Rack', 'Case ID', 'Title', 'Test Feature', 'State', 'Changed Date', 'Priority', 'Sample Size', 'Number of Cycles', 'Test Duration', 'Script type', 'CRC SDK', 'IGS Owner', 'Linked Bugs', 'Comments', 'Azure DevOps URL'];
+    var headers = [D.groupSingular(), 'Case ID', 'Title', 'Test Feature', 'State', 'Changed Date', 'Priority', 'Sample Size', 'Number of Cycles', 'Test Duration', 'Script type', 'CRC SDK', 'IGS Owner', 'Linked Bugs', 'Comments', 'Azure DevOps URL'];
     var widths = [70, 72, 360, 90, 90, 110, 60, 80, 90, 95, 80, 80, 110, 240, 260, 300];
     var dataRows = rows.map(function (row) { return [row.rack, { value: row.id, href: row.url }, row.title, row.feature, row.state, row.changed, row.priority, row.sampleSize, row.cycles, row.duration, row.scriptType, row.crcSdk, row.igsOwner, row.bugs, row.comments, { value: row.url, href: row.url }]; });
-    return { bytes: D.xlsxWorkbook([{ name: 'Rack 1 Features', headers: headers, rows: dataRows, widths: widths }]), count: rows.length };
+    return { bytes: D.xlsxWorkbook([{ name: D.primaryGroupName().slice(0, 31) + ' Features', headers: headers, rows: dataRows, widths: widths }]), count: rows.length };
   };
   D.exportSuiteExcel = function () {
     var result = D.suiteXlsx(), now = new Date();
     function pad(value) { return value < 10 ? '0' + value : String(value); }
     var stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());
-    D.downloadBlob(result.bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', D.reportPrefix() + '-Rack1-Test-Features-' + stamp + '.xlsx');
-    D.setStatus('Downloaded unfrozen XLSX workbook with ' + result.count + ' Rack 1 Test Feature case rows.', 'info');
+    D.downloadBlob(result.bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', D.reportPrefix() + '-' + D.safeFileName(D.primaryGroupName()) + '-Test-Features-' + stamp + '.xlsx');
+    D.setStatus('Downloaded unfrozen XLSX workbook with ' + result.count + ' ' + D.groupSingular() + ' Test Feature case rows.', 'info');
   };
   D.featureCaseTable = function (entries, featureName) {
     var scroll = D.el('div', 'feature-table-scroll');
@@ -1184,7 +1217,7 @@
     entries.forEach(function (entry) {
       var testCase = entry.testCase, fields = testCase.suiteFields || {}, metrics = testCase.metrics || {};
       var row = D.el('tr', 'feature-case-row'); row.style.borderLeftColor = D.colorFor(testCase.state);
-      row.title = 'Rack: ' + entry.rack.label + ' · Feature: ' + featureName + ' · State: ' + testCase.state;
+      row.title = D.groupSingular() + ': ' + entry.rack.label + ' · Feature: ' + featureName + ' · State: ' + testCase.state;
       var idCell = D.el('td', 'feature-id'), idLink = D.el('a', 'caseid', String(testCase.id));
       idLink.href = D.wiUrl(testCase.id); idLink.target = '_blank'; idLink.rel = 'noopener'; idCell.appendChild(idLink); row.appendChild(idCell);
       row.appendChild(D.el('td', 'feature-title', testCase.title));
@@ -1229,11 +1262,11 @@
       D.card('UNMAPPED CASES', unmapped, unmapped ? '#fb7185' : '#2dd4bf')
     ].forEach(function (card) { cards.appendChild(card); });
     sticky.appendChild(cards); wrap.appendChild(sticky);
-    wrap.appendChild(D.el('p', 'suite-intro', 'This list is rebuilt directly from the current Rack 1 Feature hierarchy after every query. Every Rack 1 Test Case is grouped under its nearest parent Test Feature and uses the same live State, Bug and metric data as the Rack 1 tab.'));
+    wrap.appendChild(D.el('p', 'suite-intro', 'This list is rebuilt directly from all current ' + D.groupPlural() + ' after every refresh. Test Cases use the same live State, Bug and metric data as their ' + D.groupSingular() + ' tabs.'));
     var toolbar = D.el('div', 'suite-toolbar');
     var expand = D.el('button', null, 'Expand all'), collapse = D.el('button', null, 'Collapse all');
     var download = D.el('button', 'primary', 'Download Excel (.xlsx)'), search = D.el('input');
-    download.id = 'suiteExcelBtn'; download.title = 'Download all Rack 1 Test Feature case fields for Excel';
+    download.id = 'suiteExcelBtn'; download.title = 'Download all ' + D.groupPlural() + ' Test Case fields for Excel';
     search.placeholder = 'Search feature / case / state / field …';
     toolbar.appendChild(expand); toolbar.appendChild(collapse); toolbar.appendChild(download); toolbar.appendChild(search); wrap.appendChild(toolbar);
     var groupsHost = D.el('div', 'feature-groups'); wrap.appendChild(groupsHost);
@@ -1269,14 +1302,14 @@
     var states = D.orderStates(Object.keys(stateSet));
     if (!states.length) return D.el('div', 'empty', 'No data in the selected time range');
     var t = D.el('table'), thead = D.el('thead'), hr = D.el('tr');
-    hr.appendChild(D.el('th', null, 'Rack'));
+    hr.appendChild(D.el('th', null, D.groupSingular()));
     states.forEach(function (s) { hr.appendChild(D.el('th', 'num', s)); });
     hr.appendChild(D.el('th', 'num', 'Total')); thead.appendChild(hr); t.appendChild(thead);
     var tb = D.el('tbody'), totals = {}, grand = 0;
     rows.forEach(function (row) {
       var tr = D.el('tr'), td0 = D.el('td');
       var a = D.el('a', null, row.r.label + ' — ' + row.r.title.replace(/^(\[[^\]]*\]\s*)+/, ''));
-      a.href = D.wiUrl(row.r.id); a.target = '_blank'; a.rel = 'noopener'; td0.appendChild(a); tr.appendChild(td0);
+      a.href = row.r.url || D.wiUrl(row.r.id); a.target = '_blank'; a.rel = 'noopener'; td0.appendChild(a); tr.appendChild(td0);
       var tot = 0;
       states.forEach(function (s) { var v = row.m[s] || 0; tot += v; totals[s] = (totals[s] || 0) + v; tr.appendChild(D.el('td', 'num', String(v))); });
       grand += tot; tr.appendChild(D.el('td', 'num', String(tot))); tb.appendChild(tr);
@@ -1310,11 +1343,11 @@
     });
   };
   D.updateIdentity = function () {
-    var query = D.activeQuery(), rackText = D.S.racks.length ? (' — ' + D.S.racks.length + ' Racks Test Status Dashboard') : ' — Test Status Dashboard';
+    var query = D.activeQuery(), rackText = D.S.racks.length ? (' — ' + D.S.racks.length + ' ' + D.groupPlural() + ' Test Status Dashboard') : ' — Test Status Dashboard';
     document.title = query.name + ' — Test Status Dashboard';
     var title = document.getElementById('dashboardTitle'); if (title) title.textContent = query.name + rackText;
     var source = document.getElementById('querySource');
-    if (source) { source.textContent = 'Azure DevOps Query: ' + query.name; source.href = query.queryUrl; }
+    if (source) { source.textContent = (D.isTestPlanSource() ? 'Azure DevOps Test Plan: ' : 'Azure DevOps Query: ') + query.name; source.href = query.queryUrl; }
     D.refreshQuerySelector();
   };
   D.switchQuery = function (key) {
@@ -1449,7 +1482,7 @@
     D.updateIdentity();
     var tabsBar = document.getElementById('tabs'), host = document.getElementById('panels');
     tabsBar.innerHTML = ''; host.innerHTML = ''; D.S.panels = [];
-    var defs = [{ kind: 'ov', label: 'Overview (' + D.S.racks.length + ' Racks)' }]
+    var defs = [{ kind: 'ov', label: 'Overview (' + D.S.racks.length + ' ' + D.groupPlural() + ')' }]
       .concat(D.S.racks.map(function (r) { return { kind: 'rack', label: r.label, rack: r }; }))
       .concat([{ kind: 'insights', label: 'Insights' }, { kind: 'suite', label: 'Test Features' }]);
     defs.forEach(function (def, idx) {
@@ -1462,7 +1495,7 @@
       var refs = { kind: def.kind, rack: def.rack, panel: panel, tab: tab };
       var cards = D.el('div', 'cards');
       if (def.kind === 'ov') {
-        refs.cRacks = D.card('RACKS', D.S.racks.length, '#38bdf8');
+        refs.cRacks = D.card(D.groupPlural().toUpperCase(), D.S.racks.length, '#38bdf8');
         refs.cFeat = D.card('FEATURES', 0, '#c084fc');
         refs.cReq = D.card('SYSTEM REQS', 0, '#fbbf24');
         refs.cCase = D.card('TOTAL TEST CASES', '-', '#34d399');
@@ -1478,13 +1511,13 @@
         [refs.cRacks, refs.cFeat, refs.cReq, refs.cCase, refs.cFiltered, refs.cPass, refs.cFail, refs.cProgress, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
         var stickyTop = D.el('div', 'panel-sticky'); stickyTop.appendChild(cards); panel.appendChild(stickyTop);
         var grid = D.el('div', 'grid');
-        var b1 = D.box('Test Case state distribution — all Racks');
+        var b1 = D.box('Test Case state distribution — all ' + D.groupPlural());
         refs.chartHost = D.el('div', 'chartwrap'); b1.appendChild(refs.chartHost);
         refs.legendHost = D.el('div'); b1.appendChild(refs.legendHost);
-        var b2 = D.box('Rack comparison (stacked bar)');
+        var b2 = D.box(D.groupSingular() + ' comparison (stacked bar)');
         refs.cmpHost = D.el('div', 'chartwrap'); b2.appendChild(refs.cmpHost);
         grid.appendChild(b1); grid.appendChild(b2); panel.appendChild(grid);
-        var b3 = D.box('Rack × State summary table');
+        var b3 = D.box(D.groupSingular() + ' × State summary table');
         refs.tableBox = D.el('div'); b3.appendChild(refs.tableBox); panel.appendChild(b3);
         var bPriority = D.box('Test Case completion by Priority — Closed = completed');
         refs.priorityBox = D.el('div'); bPriority.appendChild(refs.priorityBox); panel.appendChild(bPriority);
@@ -1499,7 +1532,7 @@
         refs.cCase = D.card('TEST CASES', '-', '#34d399');
         refs.cFiltered = D.card('UPDATED IN RANGE', 0, '#60a5fa');
         refs.cBugs = D.card('LINKED BUGS', 0, '#f87171');
-        refs.cBugs.title = 'Unique Bug work items linked from Test Cases in this Rack.';
+        refs.cBugs.title = 'Unique Bug work items linked from Test Cases in this ' + D.groupSingular() + '.';
         [refs.cFeat, refs.cReq, refs.cCase, refs.cFiltered, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
         var rackSticky = D.el('div', 'panel-sticky'); rackSticky.appendChild(cards); panel.appendChild(rackSticky);
         var g = D.el('div', 'grid');
@@ -1657,7 +1690,7 @@
     var map = {};
     ((snapshot && snapshot.racks) || []).forEach(function (rack) {
       D.collect(rack, 'Test Case').forEach(function (testCase) {
-        map[String(testCase.id)] = { id: testCase.id, title: testCase.title, rack: rack.label || rack.title || 'Rack', state: testCase.state || '?', changed: testCase.changed || null };
+        map[String(testCase.id)] = { id: testCase.id, title: testCase.title, rack: rack.label || rack.title || D.groupSingular(), state: testCase.state || '?', changed: testCase.changed || null };
       });
     });
     return map;
