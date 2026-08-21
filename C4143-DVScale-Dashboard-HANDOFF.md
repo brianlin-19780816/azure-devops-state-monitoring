@@ -80,7 +80,7 @@ localStorage（origin `https://azurecsi.visualstudio.com`）使用到的 key：
 | Project | `Dev` |
 | Query 名稱 | `C4143_DV-Scale` |
 | Query ID | `9254024e-6a97-44ed-953b-1aa07d38fb48` |
-| Query 頁面 | `https://azurecsi.visualstudio.com/Dev/_queries/query/9254024e-6a97-44ed-953b-1aa07d38fb48/` |
+| Query 頁面 | `https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390` |
 
 v1.10.0 另內建第二個 Query：
 
