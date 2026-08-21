@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         C4143 DV-Scale Rack Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.10.0
+// @version      1.10.1
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
-// @homepageURL  https://github.com/alan512627/azure-devops-state-monitoring
-// @supportURL   https://github.com/alan512627/azure-devops-state-monitoring/issues
-// @updateURL    https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
-// @downloadURL  https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
+// @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
+// @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
+// @updateURL    https://raw.githubusercontent.com/brianlin-19780816/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
+// @downloadURL  https://raw.githubusercontent.com/brianlin-19780816/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
 // @match        https://azurecsi.visualstudio.com/*
 // @run-at       document-idle
 // @grant        none
