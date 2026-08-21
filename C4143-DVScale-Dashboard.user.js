@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.10.4
+// @version      1.10.5
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -269,17 +269,30 @@
       (suiteTreeResponse.value || []).forEach(function (suite) { findConfigRoots(suite, false); });
       var configSuites = ['LM', 'MM', 'HH'].map(function (code) { return configMap[code]; }).filter(Boolean);
       suiteGroups = {};
-      function addSuiteCase(entry, configSuite) {
-        var testCase = entry.testCase || entry.workItem || entry;
-        var id = +(testCase && testCase.id);
-        if (!id) return;
-        if (!seen[id]) { seen[id] = 1; ids.push(id); }
-        var groupSuite = configSuite || entry.testSuite || entry.suite || {};
-        var suiteKey = String(groupSuite.id || D.CFG.suiteId);
+      function normalizePointOutcome(value) {
+        var key = String(value || 'none').replace(/[\s_-]+/g, '').toLowerCase();
+        if (key === 'passed') return 'Passed';
+        if (key === 'failed') return 'Failed';
+        if (key === 'none' || key === 'unspecified' || key === 'notexecuted') return 'Not run';
+        if (key === 'inprogress') return 'In Progress';
+        return String(value || 'Not run');
+      }
+      function addTestPoint(point, configSuite) {
+        var testCase = point.testCaseReference || point.testCase || {};
+        var caseId = +(testCase && testCase.id), pointId = +(point && point.id);
+        if (!caseId || !pointId) return;
+        if (!seen[caseId]) { seen[caseId] = 1; ids.push(caseId); }
+        var suiteKey = String(configSuite.id);
         var group = suiteGroups[suiteKey] || (suiteGroups[suiteKey] = {
-          id: groupSuite.id || D.CFG.suiteId, name: groupSuite.name || ('Test Suite ' + (groupSuite.id || D.CFG.suiteId)), ids: [], seen: {}, suiteCount: 0
+          id: configSuite.id, name: configSuite.name, ids: [], seen: {}, points: [], pointSeen: {}, pointSummary: {}, suiteCount: 0
         });
-        if (!group.seen[id]) { group.seen[id] = 1; group.ids.push(id); }
+        if (!group.seen[caseId]) { group.seen[caseId] = 1; group.ids.push(caseId); }
+        if (!group.pointSeen[pointId]) {
+          var outcome = normalizePointOutcome((point.results && point.results.outcome) || point.outcome);
+          group.pointSeen[pointId] = 1;
+          group.points.push({ id: pointId, caseId: caseId, outcome: outcome, configuration: point.configuration || null, suite: point.testSuite || point.suite || null });
+          group.pointSummary[outcome] = (group.pointSummary[outcome] || 0) + 1;
+        }
       }
       function suiteBranch(root) {
         var result = [];
@@ -287,25 +300,26 @@
         visit(root); return result;
       }
       if (configSuites.length) {
-        var suiteTasks = [];
+        var pointTasks = [];
         configSuites.forEach(function (configSuite) {
           var branch = suiteBranch(configSuite);
           suiteGroups[String(configSuite.id)] = {
-            id: configSuite.id, name: configSuite.name, ids: [], seen: {}, suiteCount: branch.length
+            id: configSuite.id, name: configSuite.name, ids: [], seen: {}, points: [], pointSeen: {}, pointSummary: {}, suiteCount: branch.length
           };
-          branch.forEach(function (suite) { suiteTasks.push({ configSuite: configSuite, suite: suite }); });
+          branch.forEach(function (suite) { pointTasks.push({ configSuite: configSuite, suite: suite }); });
         });
-        var suiteResponses = await D.mapLimit(suiteTasks, 4, function (task) {
-          return D.apiFetch(planPath + '/Suites/' + encodeURIComponent(task.suite.id) + '/TestCase?isRecursive=false&expand=false&api-version=7.1');
+        var pointResponses = await D.mapLimit(pointTasks, 4, function (task) {
+          return D.apiFetch(base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/Plans/' + encodeURIComponent(D.CFG.planId)
+            + '/Suites/' + encodeURIComponent(task.suite.id) + '/points?includePointDetails=true&$top=10000&api-version=7.1');
         });
-        suiteResponses.forEach(function (response, index) {
-          var entries = Array.isArray(response) ? response : (response.value || []);
-          entries.forEach(function (entry) { addSuiteCase(entry, suiteTasks[index].configSuite); });
+        pointResponses.forEach(function (response, index) {
+          (response.value || []).forEach(function (point) { addTestPoint(point, pointTasks[index].configSuite); });
         });
       } else {
-        var suiteResponse = await D.apiFetch(planPath + '/Suites/' + encodeURIComponent(D.CFG.suiteId) + '/TestCase?isRecursive=true&expand=false&api-version=7.1');
-        var suiteCases = Array.isArray(suiteResponse) ? suiteResponse : (suiteResponse.value || []);
-        suiteCases.forEach(function (entry) { addSuiteCase(entry, null); });
+        var fallbackPoints = await D.apiFetch(base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/Plans/' + encodeURIComponent(D.CFG.planId)
+          + '/Suites/' + encodeURIComponent(D.CFG.suiteId) + '/points?includePointDetails=true&$top=10000&api-version=7.1');
+        var fallbackSuite = { id: D.CFG.suiteId, name: 'Test Suite ' + D.CFG.suiteId };
+        (fallbackPoints.value || []).forEach(function (point) { addTestPoint(point, fallbackSuite); });
       }
       if (!ids.length) throw new Error('The selected LM / MM / HH Config suites contain no readable Test Cases.');
     } else {
@@ -411,6 +425,7 @@
         return {
           id: 'suite-' + group.id, suiteId: group.id, type: 'Feature', title: group.name, state: '?', tags: '', changed: null, assigned: '',
           metrics: {}, suiteFields: {}, bugs: [], children: group.ids.map(build),
+          testPoints: group.points || [], pointSummary: group.pointSummary || {}, suiteCount: group.suiteCount || 0,
           num: configOrder[code] || 99, label: label,
           url: D.CFG.org + '/' + encodeURIComponent(D.CFG.project) + '/_testPlans/charts?planId=' + encodeURIComponent(D.CFG.planId) + '&suiteId=' + encodeURIComponent(group.id)
         };
@@ -558,6 +573,22 @@
   D.collect = function (node, type, out) { out = out || []; if (node.type === type) out.push(node); (node.children || []).forEach(function (c) { D.collect(c, type, out); }); return out; };
   D.inRange = function (c) { var v = D.S.range; if (v === 'all') return true; if (!c.changed) return false; return (Date.now() - new Date(c.changed).getTime()) <= parseInt(v, 10) * 86400000; };
   D.countStates = function (cases) { var m = {}; cases.forEach(function (c) { m[c.state] = (m[c.state] || 0) + 1; }); return m; };
+  D.groupStateCounts = function (group, cases) {
+    if (D.isTestPlanSource() && group && group.pointSummary) return Object.assign({}, group.pointSummary);
+    return D.countStates(cases || []);
+  };
+  D.groupTotal = function (group, cases) {
+    if (D.isTestPlanSource() && group && group.testPoints) return group.testPoints.length;
+    return (cases || []).length;
+  };
+  D.allPointStateCounts = function () {
+    var totals = {};
+    (D.S.racks || []).forEach(function (group) {
+      var counts = D.groupStateCounts(group, []);
+      Object.keys(counts).forEach(function (key) { totals[key] = (totals[key] || 0) + counts[key]; });
+    });
+    return totals;
+  };
   D.sum = function (m) { var t = 0; for (var k in m) t += m[k]; return t; };
   D.uniqueBugs = function (cases) {
     var seen = {}, bugs = [];
@@ -1309,7 +1340,7 @@
   D.rackTable = function () {
     var stateSet = {};
     var rows = D.S.racks.map(function (r) {
-      var m = D.countStates(D.collect(r, 'Test Case').filter(D.inRange));
+      var cases = D.collect(r, 'Test Case').filter(D.inRange), m = D.groupStateCounts(r, cases);
       for (var k in m) stateSet[k] = 1; return { r: r, m: m };
     });
     var states = D.orderStates(Object.keys(stateSet));
@@ -1511,26 +1542,26 @@
         refs.cRacks = D.card(D.groupPlural().toUpperCase(), D.S.racks.length, '#38bdf8');
         refs.cFeat = D.card('FEATURES', 0, '#c084fc');
         refs.cReq = D.card('SYSTEM REQS', 0, '#fbbf24');
-        refs.cCase = D.card('TOTAL TEST CASES', '-', '#34d399');
+        refs.cCase = D.card(D.isTestPlanSource() ? 'TOTAL TEST POINTS' : 'TOTAL TEST CASES', '-', '#34d399');
         refs.cFiltered = D.card('UPDATED IN RANGE', 0, '#60a5fa');
-        refs.cPass = D.card('PASS CASES / RATE', '-', '#2dd4bf');
-        refs.cFail = D.card('FAIL CASES (BLOCKED) / RATE', '-', '#fb7185');
-        refs.cProgress = D.card('IN PROGRESS CASES', 0, '#818cf8');
+        refs.cPass = D.card(D.isTestPlanSource() ? 'PASSED POINTS / RATE' : 'PASS CASES / RATE', '-', '#2dd4bf');
+        refs.cFail = D.card(D.isTestPlanSource() ? 'FAILED POINTS / RATE' : 'FAIL CASES (BLOCKED) / RATE', '-', '#fb7185');
+        refs.cProgress = D.card(D.isTestPlanSource() ? 'NOT RUN POINTS' : 'IN PROGRESS CASES', 0, '#818cf8');
         refs.cBugs = D.card('BUGS / AFFECTED CASES', '-', '#fb923c');
-        refs.cPass.title = 'Closed Test Cases are counted as Pass. Rate denominator: Test Cases in the selected time range.';
-        refs.cFail.title = 'Blocked Test Cases are counted as Fail. Rate denominator: Test Cases in the selected time range.';
-        refs.cProgress.title = 'Test Cases whose current Azure DevOps State is In Progress.';
+        refs.cPass.title = D.isTestPlanSource() ? 'Passed Test Points reported by Azure Test Plans.' : 'Closed Test Cases are counted as Pass. Rate denominator: Test Cases in the selected time range.';
+        refs.cFail.title = D.isTestPlanSource() ? 'Failed Test Points reported by Azure Test Plans.' : 'Blocked Test Cases are counted as Fail. Rate denominator: Test Cases in the selected time range.';
+        refs.cProgress.title = D.isTestPlanSource() ? 'Test Points whose outcome is Not run.' : 'Test Cases whose current Azure DevOps State is In Progress.';
         refs.cBugs.title = 'Unique linked Bugs / Test Cases affected by at least one linked Bug.';
         [refs.cRacks, refs.cFeat, refs.cReq, refs.cCase, refs.cFiltered, refs.cPass, refs.cFail, refs.cProgress, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
         var stickyTop = D.el('div', 'panel-sticky'); stickyTop.appendChild(cards); panel.appendChild(stickyTop);
         var grid = D.el('div', 'grid');
-        var b1 = D.box('Test Case state distribution — all ' + D.groupPlural());
+        var b1 = D.box((D.isTestPlanSource() ? 'Test Point outcome distribution — all ' : 'Test Case state distribution — all ') + D.groupPlural());
         refs.chartHost = D.el('div', 'chartwrap'); b1.appendChild(refs.chartHost);
         refs.legendHost = D.el('div'); b1.appendChild(refs.legendHost);
         var b2 = D.box(D.groupSingular() + ' comparison (stacked bar)');
         refs.cmpHost = D.el('div', 'chartwrap'); b2.appendChild(refs.cmpHost);
         grid.appendChild(b1); grid.appendChild(b2); panel.appendChild(grid);
-        var b3 = D.box(D.groupSingular() + ' × State summary table');
+        var b3 = D.box(D.groupSingular() + (D.isTestPlanSource() ? ' × Outcome summary table' : ' × State summary table'));
         refs.tableBox = D.el('div'); b3.appendChild(refs.tableBox); panel.appendChild(b3);
         var bPriority = D.box('Test Case completion by Priority — Closed = completed');
         refs.priorityBox = D.el('div'); bPriority.appendChild(refs.priorityBox); panel.appendChild(bPriority);
@@ -1542,17 +1573,17 @@
       } else if (def.kind === 'rack') {
         refs.cFeat = D.card('FEATURES', 0, '#c084fc');
         refs.cReq = D.card('SYSTEM REQS', 0, '#fbbf24');
-        refs.cCase = D.card('TEST CASES', '-', '#34d399');
+        refs.cCase = D.card(D.isTestPlanSource() ? 'TEST POINTS' : 'TEST CASES', '-', '#34d399');
         refs.cFiltered = D.card('UPDATED IN RANGE', 0, '#60a5fa');
         refs.cBugs = D.card('LINKED BUGS', 0, '#f87171');
         refs.cBugs.title = 'Unique Bug work items linked from Test Cases in this ' + D.groupSingular() + '.';
         [refs.cFeat, refs.cReq, refs.cCase, refs.cFiltered, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
         var rackSticky = D.el('div', 'panel-sticky'); rackSticky.appendChild(cards); panel.appendChild(rackSticky);
         var g = D.el('div', 'grid');
-        var rb1 = D.box(def.rack.label + ' State distribution');
+        var rb1 = D.box(def.rack.label + (D.isTestPlanSource() ? ' Outcome distribution' : ' State distribution'));
         refs.chartHost = D.el('div', 'chartwrap'); rb1.appendChild(refs.chartHost);
         refs.legendHost = D.el('div'); rb1.appendChild(refs.legendHost);
-        var rb2 = D.box('State summary table');
+        var rb2 = D.box(D.isTestPlanSource() ? 'Outcome summary table' : 'State summary table');
         refs.tableBox = D.el('div'); rb2.appendChild(refs.tableBox);
         g.appendChild(rb1); g.appendChild(rb2); panel.appendChild(g);
         var rbPriority = D.box('Test Case completion by Priority — Closed = completed');
@@ -1602,10 +1633,16 @@
         var f = allCases.filter(D.inRange);
         var bugCases = allCases.filter(function (c) { return (c.bugs || []).length > 0; });
         var linkedBugs = D.uniqueBugs(allCases);
-        var outcomes = D.outcomeSummary(f);
+        var pointCounts = D.isTestPlanSource() ? D.allPointStateCounts() : null;
+        var pointTotal = pointCounts ? D.sum(pointCounts) : 0;
+        var outcomes = pointCounts ? {
+          total: pointTotal, pass: pointCounts.Passed || 0, fail: pointCounts.Failed || 0,
+          inProgress: pointCounts['Not run'] || 0,
+          passRate: D.rate(pointCounts.Passed || 0, pointTotal), failRate: D.rate(pointCounts.Failed || 0, pointTotal)
+        } : D.outcomeSummary(f);
         p.cFeat._val.textContent = allFeat.length;
         p.cReq._val.textContent = allReq.length;
-        p.cCase._val.textContent = allCases.length;
+        p.cCase._val.textContent = pointCounts ? pointTotal : allCases.length;
         p.cFiltered._val.textContent = f.length;
         p.cPass._val.textContent = D.outcomeValue(outcomes.pass, outcomes.passRate);
         p.cFail._val.textContent = D.outcomeValue(outcomes.fail, outcomes.failRate);
@@ -1616,21 +1653,24 @@
         p.metricBox.innerHTML = ''; p.metricBox.appendChild(D.metricInventoryPanel(f));
         p.bugStatsBox.innerHTML = ''; p.bugStatsBox.appendChild(D.bugStats(allCases));
         p.bugBox.innerHTML = ''; p.bugBox.appendChild(D.bugTable(allCases));
-        var counts = D.countStates(f);
+        var counts = pointCounts || D.countStates(f);
         D.drawInto(p.chartHost, counts);
         p.legendHost.innerHTML = ''; p.legendHost.appendChild(D.legend(counts));
         var stateSet = {};
-        var perRack = D.S.racks.map(function (r) { var m = D.countStates(D.collect(r, 'Test Case').filter(D.inRange)); for (var k in m) stateSet[k] = 1; return m; });
+        var perRack = D.S.racks.map(function (r) {
+          var cases = D.collect(r, 'Test Case').filter(D.inRange), m = D.groupStateCounts(r, cases);
+          for (var k in m) stateSet[k] = 1; return m;
+        });
         p.cmpHost.innerHTML = '';
         p.cmpHost.appendChild(D.stacked(D.S.racks.map(function (r) { return r.label; }), perRack, D.orderStates(Object.keys(stateSet))));
       } else if (p.kind === 'rack') {
         var cs = D.collect(p.rack, 'Test Case'), fc = cs.filter(D.inRange);
         p.cFeat._val.textContent = D.collect(p.rack, 'Feature').length;
         p.cReq._val.textContent = D.collect(p.rack, 'System Requirement').length;
-        p.cCase._val.textContent = cs.length;
+        p.cCase._val.textContent = D.groupTotal(p.rack, cs);
         p.cFiltered._val.textContent = fc.length;
         p.cBugs._val.textContent = D.uniqueBugs(cs).length;
-        var c2 = D.countStates(fc);
+        var c2 = D.groupStateCounts(p.rack, fc);
         p.tableBox.innerHTML = ''; p.tableBox.appendChild(D.statsTable(c2));
         p.priorityBox.innerHTML = ''; p.priorityBox.appendChild(D.priorityCompletionChart(fc));
         p.metricBox.innerHTML = ''; p.metricBox.appendChild(D.metricInventoryPanel(fc));
@@ -1649,7 +1689,7 @@
     if (!tf && allCases.length) {
       D.setStatus(src + ': loaded ' + allCases.length + ' test cases, but nothing was updated within "' + rl + '" — charts are empty. Latest change: ' + D.fmt(D.latest(allCases)) + '.' + bugNote + metricNote + testNote, 'warn');
     } else if (D.S.racks.length) {
-      D.setStatus(src + ': ' + D.S.racks.length + ' racks, ' + allCases.length + ' test cases, ' + totalLinkedBugs + ' linked Bugs; "' + rl + '" contains ' + tf + ' updated items.' + bugNote + metricNote + testNote, (D.S.bugLinkWarning || D.S.metricFieldWarning || testNote) ? 'warn' : 'info');
+      D.setStatus(src + ': ' + D.S.racks.length + ' ' + D.groupPlural().toLowerCase() + ', ' + (D.isTestPlanSource() ? D.sum(D.allPointStateCounts()) + ' test points / ' : '') + allCases.length + ' unique test cases, ' + totalLinkedBugs + ' linked Bugs; "' + rl + '" contains ' + tf + ' updated items.' + bugNote + metricNote + testNote, (D.S.bugLinkWarning || D.S.metricFieldWarning || testNote) ? 'warn' : 'info');
     }
   };
   D.load = async function () {
