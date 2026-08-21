@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         C4143 DV-Scale Rack Test Status Dashboard
+// @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.10.1
+// @version      1.10.2
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -68,7 +68,7 @@
       : D.CFG.org + '/' + encodeURIComponent(D.CFG.project) + '/_queries/query/' + D.CFG.queryId + '/';
   }
   D.DEFAULT_QUERIES = [
-    { name: 'C4143 Test Plan', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', sourceType: 'testPlan', planId: 3823389, suiteId: 3823390, queryId: '', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390', builtin: true },
+    { name: 'C4143_DV-SIT', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', sourceType: 'testPlan', planId: 3823389, suiteId: 3823390, queryId: '', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390', builtin: true },
     { name: '[EchoFalls][C4142][PSE] EVT - Scale Testing', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', queryId: '6e06c765-2ff5-43c4-80c6-e78438eea6d9', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_queries/query/6e06c765-2ff5-43c4-80c6-e78438eea6d9/', builtin: true }
   ];
   D.STATE_COLORS = {"Not Started":"#94a3b8","New":"#60a5fa","Proposed":"#f5b544","Design":"#a78bfa","In Progress":"#818cf8","Active":"#818cf8","Ready":"#38bdf8","Committed":"#22d3ee","Passed":"#34d399","Closed":"#2dd4bf","Done":"#2dd4bf","Completed":"#2dd4bf","Failed":"#f87171","Blocked":"#fb7185","Removed":"#9ca3af","Resolved":"#22d3ee","Paused":"#fbbf24"};
@@ -1311,7 +1311,7 @@
   };
   D.updateIdentity = function () {
     var query = D.activeQuery(), rackText = D.S.racks.length ? (' — ' + D.S.racks.length + ' Racks Test Status Dashboard') : ' — Test Status Dashboard';
-    document.title = query.name + ' Test Status Dashboard';
+    document.title = query.name + ' — Test Status Dashboard';
     var title = document.getElementById('dashboardTitle'); if (title) title.textContent = query.name + rackText;
     var source = document.getElementById('querySource');
     if (source) { source.textContent = 'Azure DevOps Query: ' + query.name; source.href = query.queryUrl; }
@@ -1365,7 +1365,7 @@
   };
   D.buildShell = function () {
     document.head.innerHTML = ''; document.body.innerHTML = '';
-    document.title = D.activeQuery().name + ' Test Status Dashboard';
+    document.title = D.activeQuery().name + ' — Test Status Dashboard';
     var st = D.el('style'); st.textContent = D.CSS; document.head.appendChild(st);
     var mc = D.el('meta'); mc.setAttribute('charset', 'utf-8'); document.head.appendChild(mc);
 
