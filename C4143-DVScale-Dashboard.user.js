@@ -63,7 +63,9 @@
     D.CFG.org = String(extensionContext.org || D.CFG.org).replace(/\/+$/, '');
     D.CFG.orgName = extensionContext.orgName || D.CFG.orgName;
     D.CFG.project = extensionContext.project || D.CFG.project;
-    D.CFG.queryUrl = D.CFG.orgName === 'azurecsi' && D.CFG.project === 'Dev'\n      ? 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390'\n      : D.CFG.org + '/' + encodeURIComponent(D.CFG.project) + '/_queries/query/' + D.CFG.queryId + '/';
+    D.CFG.queryUrl = D.CFG.orgName === 'azurecsi' && D.CFG.project === 'Dev'
+      ? 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390'
+      : D.CFG.org + '/' + encodeURIComponent(D.CFG.project) + '/_queries/query/' + D.CFG.queryId + '/';
   }
   D.DEFAULT_QUERIES = [
     { name: 'C4143_DV-Scale', org: 'https://azurecsi.visualstudio.com', orgName: 'azurecsi', project: 'Dev', queryId: '9254024e-6a97-44ed-953b-1aa07d38fb48', queryUrl: 'https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390', builtin: true },
