@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.10.3
+// @version      1.10.4
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -255,39 +255,52 @@
     if (D.CFG.sourceType === 'testPlan') {
       var planPath = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/Plans/' + encodeURIComponent(D.CFG.planId);
       var suiteTreeResponse = await D.apiFetch(planPath + '/suites?asTreeView=true&api-version=7.1');
-      var allSuites = [];
-      function collectSuites(suite) {
+      var configRank = { LM: 1, MM: 2, HH: 3 }, configMap = {};
+      function findConfigRoots(suite, insideConfig) {
         if (!suite) return;
-        allSuites.push(suite);
-        (suite.children || []).forEach(collectSuites);
+        var match = /\b(LM|MM|HH)\b/i.exec(suite.name || '');
+        var isConfigRoot = !!match && !insideConfig;
+        if (isConfigRoot) {
+          var code = match[1].toUpperCase();
+          if (!configMap[code]) configMap[code] = suite;
+        }
+        (suite.children || []).forEach(function (child) { findConfigRoots(child, insideConfig || isConfigRoot); });
       }
-      (suiteTreeResponse.value || []).forEach(collectSuites);
-      var configSuites = allSuites.filter(function (suite) { return /\b(LM|MM|HH)\b/i.test(suite.name || ''); });
-      var configRank = { LM: 1, MM: 2, HH: 3 };
-      configSuites.sort(function (a, b) {
-        var am = /\b(LM|MM|HH)\b/i.exec(a.name || ''), bm = /\b(LM|MM|HH)\b/i.exec(b.name || '');
-        return (configRank[am ? am[1].toUpperCase() : ''] || 99) - (configRank[bm ? bm[1].toUpperCase() : ''] || 99);
-      });
+      (suiteTreeResponse.value || []).forEach(function (suite) { findConfigRoots(suite, false); });
+      var configSuites = ['LM', 'MM', 'HH'].map(function (code) { return configMap[code]; }).filter(Boolean);
       suiteGroups = {};
-      function addSuiteCase(entry, suite) {
+      function addSuiteCase(entry, configSuite) {
         var testCase = entry.testCase || entry.workItem || entry;
         var id = +(testCase && testCase.id);
         if (!id) return;
         if (!seen[id]) { seen[id] = 1; ids.push(id); }
-        var groupSuite = suite || entry.testSuite || entry.suite || {};
+        var groupSuite = configSuite || entry.testSuite || entry.suite || {};
         var suiteKey = String(groupSuite.id || D.CFG.suiteId);
         var group = suiteGroups[suiteKey] || (suiteGroups[suiteKey] = {
-          id: groupSuite.id || D.CFG.suiteId, name: groupSuite.name || ('Test Suite ' + (groupSuite.id || D.CFG.suiteId)), ids: [], seen: {}
+          id: groupSuite.id || D.CFG.suiteId, name: groupSuite.name || ('Test Suite ' + (groupSuite.id || D.CFG.suiteId)), ids: [], seen: {}, suiteCount: 0
         });
         if (!group.seen[id]) { group.seen[id] = 1; group.ids.push(id); }
       }
+      function suiteBranch(root) {
+        var result = [];
+        function visit(suite) { if (!suite) return; result.push(suite); (suite.children || []).forEach(visit); }
+        visit(root); return result;
+      }
       if (configSuites.length) {
-        var configResponses = await Promise.all(configSuites.map(function (suite) {
-          return D.apiFetch(planPath + '/Suites/' + encodeURIComponent(suite.id) + '/TestCase?isRecursive=true&expand=false&api-version=7.1');
-        }));
-        configResponses.forEach(function (response, index) {
+        var suiteTasks = [];
+        configSuites.forEach(function (configSuite) {
+          var branch = suiteBranch(configSuite);
+          suiteGroups[String(configSuite.id)] = {
+            id: configSuite.id, name: configSuite.name, ids: [], seen: {}, suiteCount: branch.length
+          };
+          branch.forEach(function (suite) { suiteTasks.push({ configSuite: configSuite, suite: suite }); });
+        });
+        var suiteResponses = await D.mapLimit(suiteTasks, 4, function (task) {
+          return D.apiFetch(planPath + '/Suites/' + encodeURIComponent(task.suite.id) + '/TestCase?isRecursive=false&expand=false&api-version=7.1');
+        });
+        suiteResponses.forEach(function (response, index) {
           var entries = Array.isArray(response) ? response : (response.value || []);
-          entries.forEach(function (entry) { addSuiteCase(entry, configSuites[index]); });
+          entries.forEach(function (entry) { addSuiteCase(entry, suiteTasks[index].configSuite); });
         });
       } else {
         var suiteResponse = await D.apiFetch(planPath + '/Suites/' + encodeURIComponent(D.CFG.suiteId) + '/TestCase?isRecursive=true&expand=false&api-version=7.1');
