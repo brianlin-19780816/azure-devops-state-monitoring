@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.10.5
+// @version      1.10.6
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -267,7 +267,9 @@
         (suite.children || []).forEach(function (child) { findConfigRoots(child, insideConfig || isConfigRoot); });
       }
       (suiteTreeResponse.value || []).forEach(function (suite) { findConfigRoots(suite, false); });
-      var configSuites = ['LM', 'MM', 'HH'].map(function (code) { return configMap[code]; }).filter(Boolean);
+      var missingConfigs = ['LM', 'MM', 'HH'].filter(function (code) { return !configMap[code]; });
+      if (missingConfigs.length) throw new Error('Test Plan suite tree is missing Config suites: ' + missingConfigs.join(', '));
+      var configSuites = ['LM', 'MM', 'HH'].map(function (code) { return configMap[code]; });
       suiteGroups = {};
       function normalizePointOutcome(value) {
         var key = String(value || 'none').replace(/[\s_-]+/g, '').toLowerCase();
@@ -431,6 +433,12 @@
         };
       });
       racks.sort(function (a, b) { return a.num - b.num || a.label.localeCompare(b.label); });
+      racks.forEach(function (group) {
+        var outcomeTotal = D.sum(group.pointSummary || {});
+        if (outcomeTotal !== (group.testPoints || []).length) {
+          throw new Error(group.label + ' Test Point integrity check failed: ' + group.testPoints.length + ' points but ' + outcomeTotal + ' outcomes.');
+        }
+      });
     } else {
       var rackIds = ids.filter(function (id) {
         var f = byId[id]; if (!f || f['System.WorkItemType'] !== 'Feature') return false;
@@ -1540,10 +1548,7 @@
       var cards = D.el('div', 'cards');
       if (def.kind === 'ov') {
         refs.cRacks = D.card(D.groupPlural().toUpperCase(), D.S.racks.length, '#38bdf8');
-        refs.cFeat = D.card('FEATURES', 0, '#c084fc');
-        refs.cReq = D.card('SYSTEM REQS', 0, '#fbbf24');
         refs.cCase = D.card(D.isTestPlanSource() ? 'TOTAL TEST POINTS' : 'TOTAL TEST CASES', '-', '#34d399');
-        refs.cFiltered = D.card('UPDATED IN RANGE', 0, '#60a5fa');
         refs.cPass = D.card(D.isTestPlanSource() ? 'PASSED POINTS / RATE' : 'PASS CASES / RATE', '-', '#2dd4bf');
         refs.cFail = D.card(D.isTestPlanSource() ? 'FAILED POINTS / RATE' : 'FAIL CASES (BLOCKED) / RATE', '-', '#fb7185');
         refs.cProgress = D.card(D.isTestPlanSource() ? 'NOT RUN POINTS' : 'IN PROGRESS CASES', 0, '#818cf8');
@@ -1552,7 +1557,7 @@
         refs.cFail.title = D.isTestPlanSource() ? 'Failed Test Points reported by Azure Test Plans.' : 'Blocked Test Cases are counted as Fail. Rate denominator: Test Cases in the selected time range.';
         refs.cProgress.title = D.isTestPlanSource() ? 'Test Points whose outcome is Not run.' : 'Test Cases whose current Azure DevOps State is In Progress.';
         refs.cBugs.title = 'Unique linked Bugs / Test Cases affected by at least one linked Bug.';
-        [refs.cRacks, refs.cFeat, refs.cReq, refs.cCase, refs.cFiltered, refs.cPass, refs.cFail, refs.cProgress, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
+        [refs.cRacks, refs.cCase, refs.cPass, refs.cFail, refs.cProgress, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
         var stickyTop = D.el('div', 'panel-sticky'); stickyTop.appendChild(cards); panel.appendChild(stickyTop);
         var grid = D.el('div', 'grid');
         var b1 = D.box((D.isTestPlanSource() ? 'Test Point outcome distribution — all ' : 'Test Case state distribution — all ') + D.groupPlural());
@@ -1571,13 +1576,10 @@
         refs.bugStatsBox = D.el('div'); b4.appendChild(refs.bugStatsBox);
         refs.bugBox = D.el('div', 'bug-detail-scroll'); b4.appendChild(refs.bugBox); panel.appendChild(b4);
       } else if (def.kind === 'rack') {
-        refs.cFeat = D.card('FEATURES', 0, '#c084fc');
-        refs.cReq = D.card('SYSTEM REQS', 0, '#fbbf24');
         refs.cCase = D.card(D.isTestPlanSource() ? 'TEST POINTS' : 'TEST CASES', '-', '#34d399');
-        refs.cFiltered = D.card('UPDATED IN RANGE', 0, '#60a5fa');
         refs.cBugs = D.card('LINKED BUGS', 0, '#f87171');
         refs.cBugs.title = 'Unique Bug work items linked from Test Cases in this ' + D.groupSingular() + '.';
-        [refs.cFeat, refs.cReq, refs.cCase, refs.cFiltered, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
+        [refs.cCase, refs.cBugs].forEach(function (c) { cards.appendChild(c); });
         var rackSticky = D.el('div', 'panel-sticky'); rackSticky.appendChild(cards); panel.appendChild(rackSticky);
         var g = D.el('div', 'grid');
         var rb1 = D.box(def.rack.label + (D.isTestPlanSource() ? ' Outcome distribution' : ' State distribution'));
@@ -1622,11 +1624,9 @@
   };
   D.latest = function (cases) { var b = null; cases.forEach(function (c) { if (c.changed && (!b || c.changed > b)) b = c.changed; }); return b; };
   D.refresh = function () {
-    var allCases = [], allFeat = [], allReq = [];
+    var allCases = [];
     D.S.racks.forEach(function (r) {
       allCases = allCases.concat(D.collect(r, 'Test Case'));
-      allFeat = allFeat.concat(D.collect(r, 'Feature'));
-      allReq = allReq.concat(D.collect(r, 'System Requirement'));
     });
     D.S.panels.forEach(function (p) {
       if (p.kind === 'ov') {
@@ -1640,10 +1640,7 @@
           inProgress: pointCounts['Not run'] || 0,
           passRate: D.rate(pointCounts.Passed || 0, pointTotal), failRate: D.rate(pointCounts.Failed || 0, pointTotal)
         } : D.outcomeSummary(f);
-        p.cFeat._val.textContent = allFeat.length;
-        p.cReq._val.textContent = allReq.length;
         p.cCase._val.textContent = pointCounts ? pointTotal : allCases.length;
-        p.cFiltered._val.textContent = f.length;
         p.cPass._val.textContent = D.outcomeValue(outcomes.pass, outcomes.passRate);
         p.cFail._val.textContent = D.outcomeValue(outcomes.fail, outcomes.failRate);
         p.cProgress._val.textContent = outcomes.inProgress;
@@ -1665,10 +1662,7 @@
         p.cmpHost.appendChild(D.stacked(D.S.racks.map(function (r) { return r.label; }), perRack, D.orderStates(Object.keys(stateSet))));
       } else if (p.kind === 'rack') {
         var cs = D.collect(p.rack, 'Test Case'), fc = cs.filter(D.inRange);
-        p.cFeat._val.textContent = D.collect(p.rack, 'Feature').length;
-        p.cReq._val.textContent = D.collect(p.rack, 'System Requirement').length;
         p.cCase._val.textContent = D.groupTotal(p.rack, cs);
-        p.cFiltered._val.textContent = fc.length;
         p.cBugs._val.textContent = D.uniqueBugs(cs).length;
         var c2 = D.groupStateCounts(p.rack, fc);
         p.tableBox.innerHTML = ''; p.tableBox.appendChild(D.statsTable(c2));
