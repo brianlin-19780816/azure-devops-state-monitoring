@@ -5,7 +5,7 @@
 | 文件版本 | 2.1 |
 | 初版日期 | 2026-07-28 |
 | 最後更新 | 2026-08-21 |
-| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.1） |
+| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.2） |
 | 最新腳本大小 | 141610 bytes（約 138.3 KB） |
 | 執行環境 | Chrome + Tampermonkey，需已登入 Azure DevOps（azurecsi） |
 
