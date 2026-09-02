@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.3
+// @version      1.11.4
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -15,7 +15,7 @@
 /* ------------------------------------------------------------------
  How to use
   1) Install Tampermonkey, import this file, then open the dedicated DV-SIT entry:
-     https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash
+     https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit
     Every open or F5 refresh re-runs the query and redraws the dashboard.
 
  2) Data source modes (dropdown at the top left; your choice is saved in localStorage):
@@ -54,7 +54,10 @@
 (function () {
   "use strict";
   var extensionContext = window.__C4143_EXTENSION__ || null;
-  var isDashboardEntry = !!extensionContext || location.hash.toLowerCase() === "#dvdash";
+  var dashboardKey = String(new URLSearchParams(location.search).get('dashboard') || '').toLowerCase();
+  var isProjectsApi = /^\/_apis\/projects\/?$/i.test(location.pathname);
+  var isDashboardEntry = !!extensionContext || location.hash.toLowerCase() === '#dvdash' ||
+    dashboardKey === 'dvsit' || (isProjectsApi && !dashboardKey && !location.hash);
   if (!isDashboardEntry) return;
   var D = {};
   D.CFG = {"org":"https://azurecsi.visualstudio.com","orgName":"azurecsi","project":"Dev","sourceType":"testPlan","planId":3823389,"suiteId":3823390,"queryId":"","queryUrl":"https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390","testResultDays":365};
