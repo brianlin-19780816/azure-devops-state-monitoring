@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.0
+// @version      1.11.1
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -492,9 +492,9 @@
   D.loadTestResults = async function (base, cases) {
     var now = new Date(), windows = [];
     now.setUTCMilliseconds(0);
-    for (var offset = 0; offset < D.CFG.testResultDays; offset += 30) {
+    for (var offset = 0; offset < D.CFG.testResultDays; offset += 7) {
       var max = new Date(now.getTime() - offset * 86400000);
-      var min = new Date(now.getTime() - Math.min(offset + 30, D.CFG.testResultDays) * 86400000 + 1000);
+      var min = new Date(now.getTime() - Math.min(offset + 7, D.CFG.testResultDays) * 86400000 + 1000);
       windows.push({ min: min.toISOString(), max: max.toISOString() });
     }
     var planMap = {}, planError = '';
@@ -502,7 +502,7 @@
       var planResponse = await D.apiFetch(base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/plans?filterActivePlans=false&api-version=7.1');
       (planResponse.value || []).forEach(function (plan) { planMap[String(plan.id)] = plan.name || ('Plan ' + plan.id); });
     } catch (planLoadError) { planError = String((planLoadError && planLoadError.message) || planLoadError); }
-    var runResponses = await D.mapLimit(windows, 2, function (windowRange) {
+    var runResponses = await D.mapLimit(windows, 4, function (windowRange) {
       var url = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/runs?minLastUpdatedDate=' + encodeURIComponent(windowRange.min)
         + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + '&$top=1000&api-version=7.1';
       return D.apiFetch(url);
