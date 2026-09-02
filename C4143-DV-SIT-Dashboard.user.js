@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.4
+// @version      1.11.5
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -54,7 +54,8 @@
 (function () {
   "use strict";
   var extensionContext = window.__C4143_EXTENSION__ || null;
-  var dashboardKey = String(new URLSearchParams(location.search).get('dashboard') || '').toLowerCase();
+  var dashboardMatch = /(?:^|[?&])dashboard=([^&]*)/i.exec(location.search || '');
+  var dashboardKey = dashboardMatch ? decodeURIComponent(dashboardMatch[1]).toLowerCase() : '';
   var isProjectsApi = /^\/_apis\/projects\/?$/i.test(location.pathname);
   var isDashboardEntry = !!extensionContext || location.hash.toLowerCase() === '#dvdash' ||
     dashboardKey === 'dvsit' || (isProjectsApi && !dashboardKey && !location.hash);
@@ -1909,5 +1910,16 @@
     D.loadQueryCatalog();
     D.buildShell(); D.persistWire(); D.load();
   };
-  D.boot();
+  function launchDashboard() {
+    try {
+      D.boot();
+    } catch (bootError) {
+      try {
+        document.documentElement.innerHTML = '<head><title>DV-SIT Dashboard startup error</title></head><body style="margin:0;padding:24px;background:#0b1220;color:#fecaca;font:14px Segoe UI,Arial,sans-serif"><h1 style="font-size:20px">DV-SIT Dashboard startup error</h1><pre style="white-space:pre-wrap;color:#fda4af">' + D.xmlEsc(String((bootError && (bootError.stack || bootError.message)) || bootError)) + '</pre></body>';
+      } catch (displayError) { }
+      if (window.console && console.error) console.error('DV-SIT Dashboard startup error', bootError);
+    }
+  }
+  if (document.body) launchDashboard();
+  else window.addEventListener('DOMContentLoaded', launchDashboard, { once: true });
 })();
