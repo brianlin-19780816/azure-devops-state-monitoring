@@ -5,7 +5,7 @@
 | 文件版本 | 2.1 |
 | 初版日期 | 2026-07-28 |
 | 最後更新 | 2026-08-21 |
-| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.4） |
+| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.6） |
 | 最新腳本大小 | 141610 bytes（約 138.3 KB） |
 | 執行環境 | Chrome + Tampermonkey，需已登入 Azure DevOps（azurecsi） |
 
@@ -863,3 +863,7 @@ Azure DevOps Test Runs API 的 `minLastUpdatedDate`／`maxLastUpdatedDate` 查�
 ### v1.11.3 修正
 
 Test Runs 清單 API 的 `$top` 上限為 100。每個 6 天視窗改為 `$top=100` 並透過 `$skip` 分頁，直到該頁少於 100 筆，以避免 `Actual value was 1000` 錯誤且保留完整 Run 清單。
+
+### v1.11.6 修正
+
+主 Query 與 Outcome 歷史資料解耦：Work Items／Test Points 完成後立即建立 Dashboard；365 天 Test Runs／Results 改在背景載入，完成後只重繪 Insights 與結果資料，避免歷史 API 阻塞整個畫面。
