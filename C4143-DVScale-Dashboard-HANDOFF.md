@@ -5,7 +5,7 @@
 | 文件版本 | 2.1 |
 | 初版日期 | 2026-07-28 |
 | 最後更新 | 2026-08-21 |
-| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.3） |
+| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.4） |
 | 最新腳本大小 | 141610 bytes（約 138.3 KB） |
 | 執行環境 | Chrome + Tampermonkey，需已登入 Azure DevOps（azurecsi） |
 
@@ -149,7 +149,7 @@ Tag 只有這幾種：`C4143_DVT`、`EF_DV_Scale`、`EF_Master_Candidate`、`Rac
 
 Azure DevOps REST API **不開放 CORS**。任何非 `azurecsi.visualstudio.com` 來源的文件（含本機 `file://` 的 .html）都無法呼叫，即使帶 PAT 也會直接 `Failed to fetch`。要達成「每次開啟就即時重跑 query」，dashboard 本身必須跑在 azurecsi 這個 origin 上 → 所以用 userscript 注入到一個輕量同源頁面。
 
-載體頁面選用：`https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash`（回傳很小的 JSON，載入快、沒有 ADO SPA 的干擾）。腳本只在 `location.hash` 含 `dvdash` 時啟動，因此不會影響正常瀏覽 ADO。
+載體頁面選用：`https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit`（回傳很小的 JSON，載入快、沒有 ADO SPA 的干擾）。腳本只在 `location.hash` 含 `dvdash` 時啟動，因此不會影響正常瀏覽 ADO。
 
 ### 5.2 執行流程
 
@@ -197,7 +197,7 @@ document-idle → hash 含 dvdash？ → D.boot()
 
 1. Chrome 安裝 Tampermonkey。
 2. 把 `C4143-DV-SIT-Dashboard.user.js` 拖進 Chrome 視窗（或 Tampermonkey → Utilities → Import from file），按 Install。
-3. 加入書籤：`https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash`
+3. 加入書籤：`https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit`
 4. 確認同一個瀏覽器已登入 Azure DevOps，點書籤即可。每次開啟或 F5 都會重跑 query。
 
 介面控制項：Data source（三模式）、Time range (by Changed Date)、Chart type（Pie / Bar）、Auto refresh every 5 min、Re-run query、Export offline snapshot .html、Expand all / Collapse all、搜尋框（比對 case 標題 / ID / state）。
@@ -343,7 +343,7 @@ document-idle → hash 含 dvdash？ → D.boot()
 | 最新檔名 | `C4143-DVScale-Dashboard.user_v1.6.2-number-of-cycles.js` |
 | 上一個穩定版 | `C4143-DVScale-Dashboard.user_v1.6.1-bug-priority-severity.js` |
 | Azure DevOps Query | `C4143_DV-Scale` / `9254024e-6a97-44ed-953b-1aa07d38fb48` |
-| 啟動網址 | `https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash` |
+| 啟動網址 | `https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit` |
 | 目前資料量 | 5 Racks / 290 Test Cases（每 Rack 58） |
 
 最新版與歷史版本目前存放於：
