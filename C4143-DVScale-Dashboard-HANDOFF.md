@@ -5,7 +5,7 @@
 | 文件版本 | 2.1 |
 | 初版日期 | 2026-07-28 |
 | 最後更新 | 2026-08-21 |
-| 最新腳本 | `C4143-DVScale-Dashboard.user.js`（v1.10.0） |
+| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.10.8） |
 | 最新腳本大小 | 141610 bytes（約 138.3 KB） |
 | 執行環境 | Chrome + Tampermonkey，需已登入 Azure DevOps（azurecsi） |
 
@@ -48,7 +48,7 @@
 
 | 檔案 / Key | 說明 |
 | --- | --- |
-| `C4143-DVScale-Dashboard.user.js` | 最新主交付物與固定安裝入口，Tampermonkey userscript v1.10.0 |
+| `C4143-DV-SIT-Dashboard.user.js` | 最新主交付物與固定安裝入口，Tampermonkey userscript v1.10.0 |
 | `azure-devops-extension/` | Azure Test Plans Hub 與 Dashboard Widget 原始碼、manifest 與建置流程 |
 | `release/C4143-DVScale-Dashboard-Extension.vsix` | 可上傳 Visual Studio Marketplace 的 Private Extension 套件 |
 | `C4143-DVScale-Dashboard.user_v1.6.1-bug-priority-severity.js` | 上一個穩定版本，保留供回退與比對 |
@@ -196,7 +196,7 @@ document-idle → hash 含 dvdash？ → D.boot()
 ## 6. 使用方式
 
 1. Chrome 安裝 Tampermonkey。
-2. 把 `C4143-DVScale-Dashboard.user.js` 拖進 Chrome 視窗（或 Tampermonkey → Utilities → Import from file），按 Install。
+2. 把 `C4143-DV-SIT-Dashboard.user.js` 拖進 Chrome 視窗（或 Tampermonkey → Utilities → Import from file），按 Install。
 3. 加入書籤：`https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash`
 4. 確認同一個瀏覽器已登入 Azure DevOps，點書籤即可。每次開啟或 F5 都會重跑 query。
 
@@ -482,7 +482,7 @@ v1.6.2 完成後執行以下檢查：
 
 ### 13.9 目前限制與維護注意事項
 
-1. 舊版本檔名必須最後一次手動改裝 `C4143-DVScale-Dashboard.user.js`；之後 Tampermonkey 可依 GitHub 固定網址與 `@version` 自動更新。
+1. 舊版本檔名必須最後一次手動改裝 `C4143-DV-SIT-Dashboard.user.js`；之後 Tampermonkey 可依 GitHub 固定網址與 `@version` 自動更新。
 2. Live query 必須在 `https://azurecsi.visualstudio.com` 同源頁面執行；在本機直接開啟 `.html` 仍無法跨網域呼叫 Azure DevOps API。
 3. 如果 Fields API 或自訂欄位權限失敗，Dashboard 會保留核心 State 資料，但自訂指標可能顯示空白並在 toast 提示。
 4. Bug Links 只辨識實際連結到 Test Case relations 的 Work Item，且只保留型別為 Bug 的項目。
@@ -497,7 +497,7 @@ v1.6.2 完成後執行以下檢查：
 
 ### 14.1 交付檔案
 
-- 最新 userscript：`C4143-DVScale-Dashboard.user.js`（目前 `@version` 1.8.6）
+- 最新 userscript：`C4143-DV-SIT-Dashboard.user.js`（目前 `@version` 1.8.6）
 - 基準來源：v1.6.2，原有 Overview、Rack 1～5、Bug、Priority、Sample Size、Number_of_cycles 與 Test Duration 功能均保留。
 - 新增第 7 個分頁：`Test Suites`。
 
@@ -553,25 +553,25 @@ Suite 清單與每櫃基準測項數：Enumeration 26、IFWI 2、BMC 2、Mantico
 
 正式安裝檔不再把版本號放在檔名中，固定使用：
 
-`C4143-DVScale-Dashboard.user.js`
+`C4143-DV-SIT-Dashboard.user.js`
 
 固定 Raw URL：
 
-`https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js`
+`https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DV-SIT-Dashboard.user.js`
 
 ### 15.2 Userscript metadata
 
 ```text
 @version      1.7.1
-@updateURL    https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
-@downloadURL  https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
+@updateURL    https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DV-SIT-Dashboard.user.js
+@downloadURL  https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DV-SIT-Dashboard.user.js
 ```
 
 Tampermonkey 會按設定的更新間隔讀取固定 URL，比較 `@version`，發現較新版本後下載並更新。更新完成後，下一次開啟或重新整理 Azure DevOps 即執行新版。
 
 ### 15.3 後續發布規則
 
-1. 所有正式修改都直接更新固定檔名 `C4143-DVScale-Dashboard.user.js`。
+1. 所有正式修改都直接更新固定檔名 `C4143-DV-SIT-Dashboard.user.js`。
 2. 每次發布必須提高 `@version`，否則 Tampermonkey 不會判定為新版。
 3. 更新 README 與本 HANDOFF 的目前版本及變更紀錄。
 4. 合併到 `main` 後，確認 Raw URL 可讀到新版本 metadata。
