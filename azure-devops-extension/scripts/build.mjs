@@ -34,5 +34,5 @@ await Promise.all([
   copyFile(join(root, "src", "dashboard.html"), join(dist, "dashboard.html")),
   copyFile(join(root, "src", "widget.html"), join(dist, "widget.html")),
   copyFile(join(root, "src", "widget.css"), join(dist, "widget.css")),
-  copyFile(join(root, "..", "C4143-DVScale-Dashboard.user.js"), join(dist, "C4143-DVScale-Dashboard.user.js"))
+  copyFile(join(root, "..", "C4143-DV-SIT-Dashboard.user.js"), join(dist, "C4143-DV-SIT-Dashboard.user.js"))
 ]);
