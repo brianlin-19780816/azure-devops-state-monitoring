@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.5
+// @version      1.11.6
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -591,7 +591,7 @@
     var history = (test && test.outcomeHistory || []).filter(function (event) {
       return event && event.caseId != null && event.completedDate && !isNaN(new Date(event.completedDate).getTime());
     }).sort(function (a, b) { return String(a.completedDate).localeCompare(String(b.completedDate)); });
-    if (!history.length) return D.el('div', 'empty', test && test.status === 'error' ? 'Outcome trend unavailable: ' + test.error : 'No historical Test Results found.');
+    if (!history.length) return D.el('div', 'empty', test && test.status === 'loading' ? 'Loading Outcome history in the background…' : (test && test.status === 'error' ? 'Outcome trend unavailable: ' + test.error : 'No historical Test Results found.'));
     var dayMs = 86400000, startDate = new Date(history[0].completedDate), today = new Date();
     var start = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate());
     var end = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
@@ -1794,12 +1794,17 @@
       var previous = D.readSnapshot();
       var res = await D.runQuery();
       D.S.racks = res.racks; D.S.loadedAt = new Date().toISOString(); D.S.snapshotMode = false;
-      await D.loadSupplementalData(D.baseFor(), D.allCases());
+      D.S.testResults = { status: 'loading', runs: [], outcomeHistory: [] };
       D.S.snapshotComparison = D.compareSnapshot(previous);
       document.getElementById('updated').textContent = 'Updated: ' + D.fmt(D.S.loadedAt);
-      D.saveSnapshot(previous);
       if (D.S.active > D.S.racks.length + 2) D.S.active = 0;
       D.buildPanels(); D.refresh();
+      D.setStatus('Main query loaded. Outcome history is loading in the background; you can use the Dashboard now.', 'info');
+      var supplementalCases = D.allCases();
+      D.loadSupplementalData(D.baseFor(), supplementalCases).then(function () {
+        D.saveSnapshot(previous);
+        D.buildPanels(); D.refresh();
+      });
     } catch (e) {
       var m = String((e && e.message) || e);
       var hint = '';
