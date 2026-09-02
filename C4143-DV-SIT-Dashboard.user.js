@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.6
+// @version      1.11.7
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -61,7 +61,7 @@
     dashboardKey === 'dvsit' || (isProjectsApi && !dashboardKey && !location.hash);
   if (!isDashboardEntry) return;
   var D = {};
-  D.CFG = {"org":"https://azurecsi.visualstudio.com","orgName":"azurecsi","project":"Dev","sourceType":"testPlan","planId":3823389,"suiteId":3823390,"queryId":"","queryUrl":"https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390","testResultDays":365};
+  D.CFG = {"org":"https://azurecsi.visualstudio.com","orgName":"azurecsi","project":"Dev","sourceType":"testPlan","planId":3823389,"suiteId":3823390,"queryId":"","queryUrl":"https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390","testResultDays":90};
   if (extensionContext) {
     D.CFG.org = String(extensionContext.org || D.CFG.org).replace(/\/+$/, '');
     D.CFG.orgName = extensionContext.orgName || D.CFG.orgName;
@@ -509,8 +509,9 @@
     var runResponses = await D.mapLimit(windows, 4, async function (windowRange) {
       var values = [], skip = 0;
       while (skip < 10000) {
+        var planFilter = D.isTestPlanSource() ? ('&planId=' + encodeURIComponent(D.CFG.planId)) : '';
         var url = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/runs?minLastUpdatedDate=' + encodeURIComponent(windowRange.min)
-          + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + '&$skip=' + skip + '&$top=100&api-version=7.1';
+          + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + planFilter + '&$skip=' + skip + '&$top=100&api-version=7.1';
         var response = await D.apiFetch(url), page = response.value || [];
         values = values.concat(page);
         if (page.length < 100) break;
@@ -521,9 +522,6 @@
     var runMap = {};
     runResponses.forEach(function (response) { (response.value || []).forEach(function (run) { runMap[run.id] = run; }); });
     var runs = Object.keys(runMap).map(function (id) { return runMap[id]; });
-    if (D.isTestPlanSource()) {
-      runs = runs.filter(function (run) { return run.plan && String(run.plan.id) === String(D.CFG.planId); });
-    }
     runs.sort(function (a, b) {
       return String(b.completedDate || b.startedDate || '').localeCompare(String(a.completedDate || a.startedDate || ''));
     });
@@ -1004,7 +1002,7 @@
   };
   D.testRunsTable = function () {
     var runs = D.S.testResults && D.S.testResults.runs || [];
-    if (!runs.length) return D.el('div', 'empty', D.S.testResults && D.S.testResults.status === 'error' ? 'Test Runs unavailable: ' + D.S.testResults.error : 'No Test Runs found in the last ' + D.CFG.testResultDays + ' days');
+    if (!runs.length) return D.el('div', 'empty', D.S.testResults && D.S.testResults.status === 'loading' ? 'Loading Test Runs in the background…' : (D.S.testResults && D.S.testResults.status === 'error' ? 'Test Runs unavailable: ' + D.S.testResults.error : 'No Test Runs found in the last ' + D.CFG.testResultDays + ' days'));
     var wrap = D.el('div', 'table-scroll'), table = D.el('table'), thead = D.el('thead'), header = D.el('tr');
     ['Run', 'Test Plan', 'State', 'Started', 'Completed', 'Results', 'API status'].forEach(function (label) { header.appendChild(D.el('th', null, label)); }); thead.appendChild(header); table.appendChild(thead);
     var tbody = D.el('tbody'); runs.slice(0, 100).forEach(function (run) {
