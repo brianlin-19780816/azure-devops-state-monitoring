@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.1
+// @version      1.11.2
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -492,9 +492,9 @@
   D.loadTestResults = async function (base, cases) {
     var now = new Date(), windows = [];
     now.setUTCMilliseconds(0);
-    for (var offset = 0; offset < D.CFG.testResultDays; offset += 7) {
+    for (var offset = 0; offset < D.CFG.testResultDays; offset += 6) {
       var max = new Date(now.getTime() - offset * 86400000);
-      var min = new Date(now.getTime() - Math.min(offset + 7, D.CFG.testResultDays) * 86400000 + 1000);
+      var min = new Date(now.getTime() - Math.min(offset + 6, D.CFG.testResultDays) * 86400000 + 1000);
       windows.push({ min: min.toISOString(), max: max.toISOString() });
     }
     var planMap = {}, planError = '';
