@@ -4,7 +4,7 @@ Azure DevOps Rack Test Status Dashboard 提供 Tampermonkey userscript 與原生
 
 ## 目前版本
 
-- Dashboard：[C4143-DV-SIT-Dashboard.user.js](./C4143-DV-SIT-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.11.3）
+- Dashboard：[C4143-DV-SIT-Dashboard.user.js](./C4143-DV-SIT-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.11.4）
 - 開發與維護文件：[C4143-DVScale-Dashboard-HANDOFF.md](./C4143-DVScale-Dashboard-HANDOFF.md)
 - Azure DevOps Extension：[azure-devops-extension](./azure-devops-extension)；可安裝 VSIX 位於 `release/C4143-DVScale-Dashboard-Extension.vsix`
 - Azure DevOps organization：`https://azurecsi.visualstudio.com`
@@ -121,7 +121,7 @@ Azure DevOps Query 有更新時，資料是由 Dashboard 在下一次載入、�
 先確認同一個 Chrome 已登入 Azure DevOps，然後開啟：
 
 ```text
-https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash
+https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit
 ```
 
 建議把這個網址加入書籤。每次開啟書籤或按 `F5` 時，userscript 都會重新啟動 Dashboard。
@@ -148,7 +148,7 @@ Live query (same-origin REST API)
 4. 加入專用 Dashboard 網址：
 
 ```text
-https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash
+https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit
 ```
 
 Chrome 啟動並載入這個頁面後，Tampermonkey 會自動執行腳本；Live query 隨即重新抓取資料。
@@ -180,7 +180,7 @@ npm run package
 ### 只看到 Azure DevOps Projects JSON，沒有 Dashboard
 
 - 確認 Tampermonkey 已安裝且腳本是 Enabled。
-- 確認網址是 `https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash`。
+- 確認網址是 `https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit`。
 - 重新整理頁面。
 - 確認沒有同時安裝多個舊版 Dashboard userscript。
 
