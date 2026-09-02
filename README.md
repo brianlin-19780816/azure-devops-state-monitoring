@@ -4,7 +4,7 @@ Azure DevOps Rack Test Status Dashboard 提供 Tampermonkey userscript 與原生
 
 ## 目前版本
 
-- Dashboard：[C4143-DVScale-Dashboard.user.js](./C4143-DVScale-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.10.0）
+- Dashboard：[C4143-DV-SIT-Dashboard.user.js](./C4143-DV-SIT-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.10.8）
 - 開發與維護文件：[C4143-DVScale-Dashboard-HANDOFF.md](./C4143-DVScale-Dashboard-HANDOFF.md)
 - Azure DevOps Extension：[azure-devops-extension](./azure-devops-extension)；可安裝 VSIX 位於 `release/C4143-DVScale-Dashboard-Extension.vsix`
 - Azure DevOps organization：`https://azurecsi.visualstudio.com`
@@ -79,7 +79,7 @@ Azure DevOps Query 有更新時，資料是由 Dashboard 在下一次載入、�
 
 ### 2. 下載目前的 JS
 
-1. 開啟固定入口的 [Dashboard JS](./C4143-DVScale-Dashboard.user.js)。
+1. 開啟固定入口的 [Dashboard JS](./C4143-DV-SIT-Dashboard.user.js)。
 2. 在 GitHub 檔案頁面按 **Download raw file**，把 `.js` 檔下載到電腦。
 
 ### 3. 匯入 Tampermonkey
@@ -100,8 +100,8 @@ Azure DevOps Query 有更新時，資料是由 Dashboard 在下一次載入、�
 固定入口的 userscript 已包含：
 
 ```text
-@updateURL   https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
-@downloadURL https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DVScale-Dashboard.user.js
+@updateURL   https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DV-SIT-Dashboard.user.js
+@downloadURL https://raw.githubusercontent.com/alan512627/azure-devops-state-monitoring/main/C4143-DV-SIT-Dashboard.user.js
 ```
 
 第一次由固定入口安裝後，Tampermonkey 會依自己的更新檢查間隔讀取 GitHub 上的 `@version`；當 repository 的版本號提高時，它會下載並取代已安裝版本。更新完成後，重新整理 Azure DevOps 頁面就會執行新版，不需要再次 Import。
