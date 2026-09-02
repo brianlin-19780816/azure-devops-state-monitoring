@@ -5,7 +5,7 @@
 | 文件版本 | 2.1 |
 | 初版日期 | 2026-07-28 |
 | 最後更新 | 2026-08-21 |
-| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.2） |
+| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.3） |
 | 最新腳本大小 | 141610 bytes（約 138.3 KB） |
 | 執行環境 | Chrome + Tampermonkey，需已登入 Azure DevOps（azurecsi） |
 
@@ -859,3 +859,7 @@ Tampermonkey 會按設定的更新間隔讀取固定 URL，比較 `@version`，�
 ### v1.11.1 修正
 
 Azure DevOps Test Runs API 的 `minLastUpdatedDate`／`maxLastUpdatedDate` 查詢區間上限為 7 天。365 天歷史資料改為 53 個不超過 7 天的視窗並以最多 4 個請求並行載入，避免 `Date Range should be within 7 days` HTTP 400。
+
+### v1.11.3 修正
+
+Test Runs 清單 API 的 `$top` 上限為 100。每個 6 天視窗改為 `$top=100` 並透過 `$skip` 分頁，直到該頁少於 100 筆，以避免 `Actual value was 1000` 錯誤且保留完整 Run 清單。
