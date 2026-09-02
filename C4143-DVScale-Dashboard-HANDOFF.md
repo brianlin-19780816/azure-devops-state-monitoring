@@ -5,7 +5,7 @@
 | 文件版本 | 2.1 |
 | 初版日期 | 2026-07-28 |
 | 最後更新 | 2026-08-21 |
-| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.10.8） |
+| 最新腳本 | `C4143-DV-SIT-Dashboard.user.js`（v1.11.0） |
 | 最新腳本大小 | 141610 bytes（約 138.3 KB） |
 | 執行環境 | Chrome + Tampermonkey，需已登入 Azure DevOps（azurecsi） |
 
@@ -847,3 +847,11 @@ Tampermonkey 會按設定的更新間隔讀取固定 URL，比較 `@version`，�
 - 與 `main` v1.9.2 合併後保留真正的 `.xlsx` 匯出，動態檔名改為目前 Query 名稱；Analytics OData、跨網域權限與原生帳密彈窗流程不會被帶回。
 - Extension package、TypeScript check 與 esbuild 通過；`release/C4143-DVScale-Dashboard-Extension.vsix` 更新為 Extension v1.1.0、50,849 bytes，內含 userscript v1.10.0 與兩個內建 Query。
 - Azure DevOps 實際 Query 頁面只做可見內容讀取；此次實作與驗證沒有儲存 Query、沒有編輯 Work Item，也沒有安裝或修改 Azure DevOps organization。
+
+## 27. v1.11.0 DV-SIT Outcome trend
+
+- Insights 新增 Outcome trend 堆疊面積圖，顯示 Passed、Failed、Not run 的每日累積狀態。
+- 日期範圍從最近 365 天內第一筆可取得的 Test Case 結果更新日到今天。
+- 每一天、每個 Test Case 只採用截至該日的最新 Test Result；Failed 類別包含 Failed、Blocked、Aborted、Error、Timeout。
+- 尚無決定性結果及其他 Outcome 歸入 Not run。
+- Test Runs 先限制為目前 Test Plan，再擷取 Results，避免其他計畫污染趨勢。
