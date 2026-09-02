@@ -29,7 +29,7 @@ async function start(): Promise<void> {
 
   document.getElementById("extension-loading")?.remove();
   const script = document.createElement("script");
-  script.src = "C4143-DVScale-Dashboard.user.js";
+  script.src = "C4143-DV-SIT-Dashboard.user.js";
   script.onload = () => SDK.notifyLoadSucceeded();
   script.onerror = () => SDK.notifyLoadFailed("Unable to load the packaged dashboard core.");
   document.body.appendChild(script);
