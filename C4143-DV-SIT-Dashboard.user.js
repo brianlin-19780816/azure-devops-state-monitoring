@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.8
+// @version      1.10.8
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -15,7 +15,7 @@
 /* ------------------------------------------------------------------
  How to use
   1) Install Tampermonkey, import this file, then open the dedicated DV-SIT entry:
-     https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0&dashboard=dvsit
+     https://azurecsi.visualstudio.com/_apis/projects?api-version=6.0#dvdash
     Every open or F5 refresh re-runs the query and redraws the dashboard.
 
  2) Data source modes (dropdown at the top left; your choice is saved in localStorage):
@@ -54,14 +54,10 @@
 (function () {
   "use strict";
   var extensionContext = window.__C4143_EXTENSION__ || null;
-  var dashboardMatch = /(?:^|[?&])dashboard=([^&]*)/i.exec(location.search || '');
-  var dashboardKey = dashboardMatch ? decodeURIComponent(dashboardMatch[1]).toLowerCase() : '';
-  var isProjectsApi = /^\/_apis\/projects\/?$/i.test(location.pathname);
-  var isDashboardEntry = !!extensionContext || location.hash.toLowerCase() === '#dvdash' ||
-    dashboardKey === 'dvsit' || (isProjectsApi && !dashboardKey && !location.hash);
+  var isDashboardEntry = !!extensionContext || location.hash.toLowerCase() === "#dvdash";
   if (!isDashboardEntry) return;
   var D = {};
-  D.CFG = {"org":"https://azurecsi.visualstudio.com","orgName":"azurecsi","project":"Dev","sourceType":"testPlan","planId":3823389,"suiteId":3823390,"queryId":"","queryUrl":"https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390","testResultDays":90};
+  D.CFG = {"org":"https://azurecsi.visualstudio.com","orgName":"azurecsi","project":"Dev","sourceType":"testPlan","planId":3823389,"suiteId":3823390,"queryId":"","queryUrl":"https://azurecsi.visualstudio.com/Dev/_testPlans/charts?planId=3823389&suiteId=3823390","testResultDays":28};
   if (extensionContext) {
     D.CFG.org = String(extensionContext.org || D.CFG.org).replace(/\/+$/, '');
     D.CFG.orgName = extensionContext.orgName || D.CFG.orgName;
@@ -496,9 +492,9 @@
   D.loadTestResults = async function (base, cases) {
     var now = new Date(), windows = [];
     now.setUTCMilliseconds(0);
-    for (var offset = 0; offset < D.CFG.testResultDays; offset += 6) {
+    for (var offset = 0; offset < D.CFG.testResultDays; offset += 7) {
       var max = new Date(now.getTime() - offset * 86400000);
-      var min = new Date(now.getTime() - Math.min(offset + 6, D.CFG.testResultDays) * 86400000 + 1000);
+      var min = new Date(now.getTime() - Math.min(offset + 7, D.CFG.testResultDays) * 86400000 + 1000);
       windows.push({ min: min.toISOString(), max: max.toISOString() });
     }
     var planMap = {}, planError = '';
@@ -506,16 +502,14 @@
       var planResponse = await D.apiFetch(base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/plans?filterActivePlans=false&api-version=7.1');
       (planResponse.value || []).forEach(function (plan) { planMap[String(plan.id)] = plan.name || ('Plan ' + plan.id); });
     } catch (planLoadError) { planError = String((planLoadError && planLoadError.message) || planLoadError); }
-    var runResponses = await D.mapLimit(windows, 4, function (windowRange) {
-      var planFilter = D.isTestPlanSource() ? ('&planId=' + encodeURIComponent(D.CFG.planId)) : '';
+    var runResponses = await D.mapLimit(windows, 2, function (windowRange) {
       var url = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/runs?minLastUpdatedDate=' + encodeURIComponent(windowRange.min)
-        + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + planFilter + '&$top=100&api-version=7.1';
+        + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + '&$top=100&api-version=7.1';
       return D.apiFetch(url);
     });
     var runMap = {};
     runResponses.forEach(function (response) { (response.value || []).forEach(function (run) { runMap[run.id] = run; }); });
-    var runs = Object.keys(runMap).map(function (id) { return runMap[id]; });
-    runs.sort(function (a, b) {
+    var runs = Object.keys(runMap).map(function (id) { return runMap[id]; }).sort(function (a, b) {
       return String(b.completedDate || b.startedDate || '').localeCompare(String(a.completedDate || a.startedDate || ''));
     });
     var resultSets = await D.mapLimit(runs, 4, async function (run) {
@@ -529,7 +523,7 @@
       (byTitle[key] = byTitle[key] || []).push(testCase);
       testCase.latestResult = null;
     });
-    var matchedResults = 0, outcomeHistory = [];
+    var matchedResults = 0;
     runs.forEach(function (run, runIndex) {
       run.resultCount = (resultSets[runIndex] || []).length;
       (resultSets[runIndex] || []).forEach(function (result) {
@@ -546,7 +540,6 @@
           runId: run.id, runName: run.name || ('Run ' + run.id), runUrl: D.testRunUrl(run.id), matchMethod: method
         };
         if (!testCase.latestResult || String(mapped.completedDate || '') > String(testCase.latestResult.completedDate || '')) testCase.latestResult = mapped;
-        if (mapped.completedDate) outcomeHistory.push({ caseId: testCase.id, outcome: mapped.outcome, completedDate: mapped.completedDate, runId: mapped.runId });
         matchedResults++;
       });
     });
@@ -558,8 +551,7 @@
         return { id: run.id, name: run.name || ('Run ' + run.id), planId: planId, planName: planMap[planId] || (run.plan && run.plan.name) || '', state: run.state || '', startedDate: run.startedDate || null, completedDate: run.completedDate || null, resultCount: run.resultCount || 0, url: D.testRunUrl(run.id), error: run._resultError || '' };
       }),
       testPlans: Object.keys(planMap).map(function (id) { return { id: id, name: planMap[id] }; }), testPlanWarning: planError,
-      matchedResults: matchedResults, outcomeHistory: outcomeHistory.sort(function (a, b) { return String(a.completedDate).localeCompare(String(b.completedDate)); }),
-      summary: summary, loadedAt: new Date().toISOString()
+      matchedResults: matchedResults, summary: summary, loadedAt: new Date().toISOString()
     };
   };
   D.isFailedTestOutcome = function (outcome) { return /^(failed|blocked|aborted|error|timeout)$/i.test(String(outcome || '').trim()); };
@@ -577,75 +569,6 @@
     summary.passRate = D.rate(summary.passed, summary.denominator);
     summary.failRate = D.rate(summary.failed, summary.denominator);
     return summary;
-  };
-  D.outcomeTrendChart = function (cases, test) {
-    var history = (test && test.outcomeHistory || []).filter(function (event) {
-      return event && event.caseId != null && event.completedDate && !isNaN(new Date(event.completedDate).getTime());
-    }).sort(function (a, b) { return String(a.completedDate).localeCompare(String(b.completedDate)); });
-    if (!history.length) return D.el('div', 'empty', test && test.status === 'loading' ? 'Loading Outcome history in the background…' : (test && test.status === 'error' ? 'Outcome trend unavailable: ' + test.error : 'No historical Test Results found.'));
-    var dayMs = 86400000, startDate = new Date(history[0].completedDate), today = new Date();
-    var start = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate());
-    var end = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-    var caseIds = {}, total = cases.length;
-    cases.forEach(function (testCase) { caseIds[String(testCase.id)] = true; });
-    var events = history.filter(function (event) { return caseIds[String(event.caseId)]; });
-    var latest = {}, eventIndex = 0, points = [];
-    function category(outcome) {
-      if (/^passed$/i.test(String(outcome || ''))) return 'Passed';
-      if (D.isFailedTestOutcome(outcome)) return 'Failed';
-      return 'Not run';
-    }
-    for (var stamp = start; stamp <= end; stamp += dayMs) {
-      var cutoff = stamp + dayMs - 1;
-      while (eventIndex < events.length && new Date(events[eventIndex].completedDate).getTime() <= cutoff) {
-        latest[String(events[eventIndex].caseId)] = category(events[eventIndex].outcome);
-        eventIndex++;
-      }
-      var passed = 0, failed = 0;
-      Object.keys(latest).forEach(function (id) {
-        if (latest[id] === 'Passed') passed++;
-        else if (latest[id] === 'Failed') failed++;
-      });
-      points.push({ stamp: stamp, passed: passed, failed: failed, notRun: Math.max(0, total - passed - failed) });
-    }
-    var W = 900, H = 330, L = 48, R = 16, T = 18, B = 54, pw = W - L - R, ph = H - T - B, max = Math.max(total, 1);
-    var svg = D.svg('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet', role: 'img', 'aria-label': 'Outcome trend from first Test Result through today' });
-    function x(index) { return L + (points.length === 1 ? pw / 2 : pw * index / (points.length - 1)); }
-    function y(value) { return T + ph - ph * value / max; }
-    for (var grid = 0; grid <= 4; grid++) {
-      var gridValue = Math.round(max * grid / 4), gy = y(gridValue);
-      svg.appendChild(D.svg('line', { x1: L, y1: gy, x2: L + pw, y2: gy, stroke: '#1c2942' }));
-      var gridLabel = D.svg('text', { x: L - 7, y: gy + 4, fill: '#7d93b3', 'text-anchor': 'end', 'font-size': '10' });
-      gridLabel.textContent = gridValue; svg.appendChild(gridLabel);
-    }
-    function addArea(lowerKey, upperKey, color, label) {
-      var top = points.map(function (point, index) { return x(index) + ',' + y(point[upperKey]); });
-      var bottom = points.map(function (point, index) { return x(index) + ',' + y(point[lowerKey]); }).reverse();
-      var path = D.svg('path', { d: 'M' + top.join(' L') + ' L' + bottom.join(' L') + ' Z', fill: color, opacity: '0.92' });
-      var title = D.svg('title'); title.textContent = label; path.appendChild(title); svg.appendChild(path);
-    }
-    var stacked = points.map(function (point) {
-      return { stamp: point.stamp, zero: 0, notRunTop: point.notRun, passedTop: point.notRun + point.passed, total: point.notRun + point.passed + point.failed, passed: point.passed, failed: point.failed, notRun: point.notRun };
-    });
-    points = stacked;
-    addArea('zero', 'notRunTop', '#94a3b8', 'Not run');
-    addArea('notRunTop', 'passedTop', '#22c55e', 'Passed');
-    addArea('passedTop', 'total', '#dc2626', 'Failed');
-    var tickEvery = Math.max(1, Math.ceil((points.length - 1) / 9));
-    points.forEach(function (point, index) {
-      if (index % tickEvery !== 0 && index !== points.length - 1) return;
-      var date = new Date(point.stamp), dateText = date.toISOString().slice(0, 10);
-      var tick = D.svg('text', { x: x(index), y: T + ph + 19, fill: '#7d93b3', 'text-anchor': 'end', 'font-size': '10', transform: 'rotate(-38 ' + x(index) + ' ' + (T + ph + 19) + ')' });
-      tick.textContent = dateText; svg.appendChild(tick);
-    });
-    points.forEach(function (point, index) {
-      var hit = D.svg('rect', { x: Math.max(L, x(index) - pw / Math.max(points.length, 2) / 2), y: T, width: Math.max(4, pw / Math.max(points.length, 2)), height: ph, fill: 'transparent' });
-      var tip = D.svg('title'); tip.textContent = new Date(point.stamp).toISOString().slice(0, 10) + ' · Passed ' + point.passed + ' · Failed ' + point.failed + ' · Not run ' + point.notRun; hit.appendChild(tip); svg.appendChild(hit);
-    });
-    var wrap = D.el('div'), scroll = D.el('div', 'trend-scroll'); scroll.appendChild(svg); wrap.appendChild(scroll);
-    wrap.appendChild(D.legend({ 'Not run': points[points.length - 1].notRun, Passed: points[points.length - 1].passed, Failed: points[points.length - 1].failed }));
-    wrap.appendChild(D.el('div', 'small', new Date(start).toISOString().slice(0, 10) + ' — ' + new Date(end).toISOString().slice(0, 10) + ' · Each day uses the latest result per Test Case as of that date.'));
-    return wrap;
   };
   D.loadSupplementalData = async function (base, cases) {
     D.S.testResults = { status: 'loading', runs: [] };
@@ -995,7 +918,7 @@
   };
   D.testRunsTable = function () {
     var runs = D.S.testResults && D.S.testResults.runs || [];
-    if (!runs.length) return D.el('div', 'empty', D.S.testResults && D.S.testResults.status === 'loading' ? 'Loading Test Runs in the background…' : (D.S.testResults && D.S.testResults.status === 'error' ? 'Test Runs unavailable: ' + D.S.testResults.error : 'No Test Runs found in the last ' + D.CFG.testResultDays + ' days'));
+    if (!runs.length) return D.el('div', 'empty', D.S.testResults && D.S.testResults.status === 'error' ? 'Test Runs unavailable: ' + D.S.testResults.error : 'No Test Runs found in the last ' + D.CFG.testResultDays + ' days');
     var wrap = D.el('div', 'table-scroll'), table = D.el('table'), thead = D.el('thead'), header = D.el('tr');
     ['Run', 'Test Plan', 'State', 'Started', 'Completed', 'Results', 'API status'].forEach(function (label) { header.appendChild(D.el('th', null, label)); }); thead.appendChild(header); table.appendChild(thead);
     var tbody = D.el('tbody'); runs.slice(0, 100).forEach(function (run) {
@@ -1114,8 +1037,6 @@
     sticky.appendChild(cards); wrap.appendChild(sticky);
     var toolbar = D.el('div', 'insights-toolbar'), csv = D.el('button', 'primary', 'Download weekly CSV'), excel = D.el('button', 'primary', 'Download weekly Excel (.xlsx)');
     csv.addEventListener('click', D.exportWeeklyCsv); excel.addEventListener('click', D.exportWeeklyExcel); toolbar.appendChild(csv); toolbar.appendChild(excel); toolbar.appendChild(D.el('span', 'small', 'Reports include all ' + D.groupPlural() + ', latest Test Result, weekly changes, metrics, Bugs and hyperlinks.')); wrap.appendChild(toolbar);
-    var trendBox = D.box('Outcome trend');
-    trendBox.appendChild(D.outcomeTrendChart(cases, test)); wrap.appendChild(trendBox);
     var resultGrid = D.el('div', 'grid'), resultBox = D.box('Real Pass / Fail — latest Test Result per Case');
     resultBox.appendChild(D.el('div', 'metric-total', resultAvailable ? ('Denominator: ' + summary.denominator + ' latest decisive results · ' + summary.other + ' other outcomes · ' + summary.noResult + ' cases without a result') : ('Unavailable: ' + (test.error || 'not loaded'))));
     resultBox.appendChild(D.horizontalBarChart('Latest Test Results', [
@@ -1785,17 +1706,12 @@
       var previous = D.readSnapshot();
       var res = await D.runQuery();
       D.S.racks = res.racks; D.S.loadedAt = new Date().toISOString(); D.S.snapshotMode = false;
-      D.S.testResults = { status: 'loading', runs: [], outcomeHistory: [] };
+      await D.loadSupplementalData(D.baseFor(), D.allCases());
       D.S.snapshotComparison = D.compareSnapshot(previous);
       document.getElementById('updated').textContent = 'Updated: ' + D.fmt(D.S.loadedAt);
+      D.saveSnapshot(previous);
       if (D.S.active > D.S.racks.length + 2) D.S.active = 0;
       D.buildPanels(); D.refresh();
-      D.setStatus('Main query loaded. Outcome history is loading in the background; you can use the Dashboard now.', 'info');
-      var supplementalCases = D.allCases();
-      D.loadSupplementalData(D.baseFor(), supplementalCases).then(function () {
-        D.saveSnapshot(previous);
-        D.buildPanels(); D.refresh();
-      });
     } catch (e) {
       var m = String((e && e.message) || e);
       var hint = '';
@@ -1906,16 +1822,5 @@
     D.loadQueryCatalog();
     D.buildShell(); D.persistWire(); D.load();
   };
-  function launchDashboard() {
-    try {
-      D.boot();
-    } catch (bootError) {
-      try {
-        document.documentElement.innerHTML = '<head><title>DV-SIT Dashboard startup error</title></head><body style="margin:0;padding:24px;background:#0b1220;color:#fecaca;font:14px Segoe UI,Arial,sans-serif"><h1 style="font-size:20px">DV-SIT Dashboard startup error</h1><pre style="white-space:pre-wrap;color:#fda4af">' + D.xmlEsc(String((bootError && (bootError.stack || bootError.message)) || bootError)) + '</pre></body>';
-      } catch (displayError) { }
-      if (window.console && console.error) console.error('DV-SIT Dashboard startup error', bootError);
-    }
-  }
-  if (document.body) launchDashboard();
-  else window.addEventListener('DOMContentLoaded', launchDashboard, { once: true });
+  D.boot();
 })();
