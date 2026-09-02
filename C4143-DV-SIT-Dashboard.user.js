@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         C4143 DV-SIT Test Status Dashboard
 // @namespace    local.ado.dvscale.dashboard
-// @version      1.11.7
+// @version      1.11.8
 // @description  Adds a multi-project Query selector, real Test Results, XLSX exports, query-scoped snapshots, and Extension support.
 // @homepageURL  https://github.com/brianlin-19780816/azure-devops-state-monitoring
 // @supportURL   https://github.com/brianlin-19780816/azure-devops-state-monitoring/issues
@@ -506,18 +506,11 @@
       var planResponse = await D.apiFetch(base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/testplan/plans?filterActivePlans=false&api-version=7.1');
       (planResponse.value || []).forEach(function (plan) { planMap[String(plan.id)] = plan.name || ('Plan ' + plan.id); });
     } catch (planLoadError) { planError = String((planLoadError && planLoadError.message) || planLoadError); }
-    var runResponses = await D.mapLimit(windows, 4, async function (windowRange) {
-      var values = [], skip = 0;
-      while (skip < 10000) {
-        var planFilter = D.isTestPlanSource() ? ('&planId=' + encodeURIComponent(D.CFG.planId)) : '';
-        var url = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/runs?minLastUpdatedDate=' + encodeURIComponent(windowRange.min)
-          + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + planFilter + '&$skip=' + skip + '&$top=100&api-version=7.1';
-        var response = await D.apiFetch(url), page = response.value || [];
-        values = values.concat(page);
-        if (page.length < 100) break;
-        skip += page.length;
-      }
-      return { value: values };
+    var runResponses = await D.mapLimit(windows, 4, function (windowRange) {
+      var planFilter = D.isTestPlanSource() ? ('&planId=' + encodeURIComponent(D.CFG.planId)) : '';
+      var url = base + '/' + encodeURIComponent(D.CFG.project) + '/_apis/test/runs?minLastUpdatedDate=' + encodeURIComponent(windowRange.min)
+        + '&maxLastUpdatedDate=' + encodeURIComponent(windowRange.max) + planFilter + '&$top=100&api-version=7.1';
+      return D.apiFetch(url);
     });
     var runMap = {};
     runResponses.forEach(function (response) { (response.value || []).forEach(function (run) { runMap[run.id] = run; }); });
