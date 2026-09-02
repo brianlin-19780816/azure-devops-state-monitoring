@@ -4,7 +4,7 @@ Azure DevOps Rack Test Status Dashboard 提供 Tampermonkey userscript 與原生
 
 ## 目前版本
 
-- Dashboard：[C4143-DV-SIT-Dashboard.user.js](./C4143-DV-SIT-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.10.8）
+- Dashboard：[C4143-DV-SIT-Dashboard.user.js](./C4143-DV-SIT-Dashboard.user.js)（固定安裝網址，腳本內版本 v1.11.0）
 - 開發與維護文件：[C4143-DVScale-Dashboard-HANDOFF.md](./C4143-DVScale-Dashboard-HANDOFF.md)
 - Azure DevOps Extension：[azure-devops-extension](./azure-devops-extension)；可安裝 VSIX 位於 `release/C4143-DVScale-Dashboard-Extension.vsix`
 - Azure DevOps organization：`https://azurecsi.visualstudio.com`
@@ -49,6 +49,10 @@ v1.8.4 讓同一列摘要卡維持完全相同的寬度與高度，並依每個�
 v1.8.5 將 Overview 的 Pass／Fail Rate 限制為最多一位小數，整數百分比不保留 `.0`。例如一般結果顯示 `72 · 24.8%`、完整完成顯示 `290 · 100%`；當 Pass 或 Fail 尚無任何數量時，該卡片只顯示 `0%`。
 
 v1.8.6 移除所有固定 Expected Case 數量與 Coverage warning。Case 新增、移除或移至不同 Rack 後，下一次重新查詢會直接顯示 Query 的實際結果，不需要同步修改 userscript 裡的基準值。
+
+## Outcome trend
+
+DV-SIT `v1.11.0` 在 Insights 新增 Outcome trend。Dashboard 讀取目前 Test Plan 最近 365 天的 Test Runs／Results，從第一筆可取得的 Test Case 結果日期到今天，逐日以每個 Case 截至當日的最新結果統計 `Passed`、`Failed`、`Not run`。尚未有決定性結果或其他 Outcome 的 Case 會計入 `Not run`；滑鼠移到圖表日期可查看當日數量。
 
 ## Insights：趨勢、真實 Test Result、週報與差異
 
